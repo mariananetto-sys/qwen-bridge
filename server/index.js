@@ -86,13 +86,16 @@ async function processQueue() {
 }
 
 function normalizeModel(model) {
-  const normalized = String(model || "qwen3.6-plus").toLowerCase();
+  const normalized = String(model || "qwen3.7-plus").toLowerCase();
   const models = {
+    "qwen3.8-max": "Qwen3.8-Max",
+    "qwen3.7-max": "Qwen3.7-Max",
+    "qwen3.7-plus": "Qwen3.7-Plus",
     "qwen3.6-plus": "Qwen3.6-Plus",
     "qwen3.5-plus": "Qwen3.5-Plus",
     "qwen3.5-omni-plus": "Qwen3.5-Omni-Plus",
   };
-  return { id: models[normalized] ? normalized : "qwen3.6-plus", displayName: models[normalized] || models["qwen3.6-plus"] };
+  return { id: models[normalized] ? normalized : "qwen3.7-plus", displayName: models[normalized] || models["qwen3.7-plus"] };
 }
 
 function buildPrompt(messages, hasExistingThread) {
@@ -170,7 +173,7 @@ app.post("/v1/conversations/:id/cancel", authenticate, async (_req, res) => {
 });
 
 app.get("/v1/models", authenticate, (_req, res) => {
-  res.json({ object: "list", data: ["qwen3.6-plus", "qwen3.5-plus", "qwen3.5-omni-plus"].map((id) => ({ id, object: "model", created: 0, owned_by: "qwen-bridge" })) });
+  res.json({ object: "list", data: ["qwen3.8-max", "qwen3.7-max", "qwen3.7-plus", "qwen3.6-plus", "qwen3.5-plus", "qwen3.5-omni-plus"].map((id) => ({ id, object: "model", created: 0, owned_by: "qwen-bridge" })) });
 });
 
 app.get("/health", (_req, res) => {
