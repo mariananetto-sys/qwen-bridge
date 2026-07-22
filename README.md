@@ -1,0 +1,56 @@
+# QwenMiniChat Bridge
+
+Bridge privado e compatível com `POST /v1/chat/completions` que conecta o Chat do SKMake a uma sessão persistente em `chat.qwen.ai` por meio do Playwright.
+
+O bridge não possui ferramentas e não acessa arquivos do projeto. O SKMake envia apenas o contexto selecionado e o pedido atual. Cada conversa do SKMake é associada à URL correspondente no Qwen e as requisições são processadas por uma fila única para impedir que duas conversas usem a mesma página ao mesmo tempo.
+
+## Instalação na máquina Google
+
+Requisitos recomendados: Ubuntu, 2 CPUs, 4 GB de RAM e disco persistente.
+
+```bash
+npm ci
+npx playwright install --with-deps chromium
+cp .env.example .env
+npm run server
+```
+
+Configure no `.env` uma chave longa em `QWEN_API_KEY`, as credenciais da conta Qwen, `QWEN_HEADLESS=true` e o domínio do SKMake em `ALLOWED_ORIGIN`.
+
+Os arquivos `server/auth.json` e `server/conversations.json` contêm, respectivamente, a sessão autenticada e o mapa local de conversas. Eles devem permanecer em disco persistente, nunca entrar no Git e ter acesso restrito ao usuário do serviço.
+
+Com Docker, mantenha o estado em um volume persistente:
+
+```bash
+docker build -t qwen-bridge .
+docker run -d --name qwen-bridge --restart unless-stopped --env-file .env -p 3001:3001 -v qwen-state:/data qwen-bridge
+```
+
+## Variáveis do SKMake na Vercel
+
+```env
+QWEN_BRIDGE_URL=https://qwen.seu-dominio.com
+QWEN_BRIDGE_API_KEY=a-mesma-chave-do-QWEN_API_KEY
+QWEN_BRIDGE_MODEL=qwen3.6-plus
+QWEN_BRIDGE_TIERS=MEDIUM
+```
+
+Execute também `npm run db:deploy:turso` no projeto SKMake para adicionar os campos que guardam a URL externa da conversa.
+
+## API
+
+- `POST /v1/chat/completions`: cria ou continua uma conversa.
+- `GET /v1/models`: lista os nomes aceitos pelo bridge.
+- `GET /health`: informa navegador, fila e disponibilidade.
+- `POST /v1/conversations/:id/cancel`: tenta interromper a geração atual.
+
+Extensões aceitas no corpo de chat:
+
+```json
+{
+  "conversation_id": "id-da-conversa-skmake",
+  "provider_thread_url": "https://chat.qwen.ai/c/..."
+}
+```
+
+A resposta devolve a URL atual em `X-Qwen-Thread-Url`, permitindo ao SKMake restaurar exatamente a mesma conversa depois.

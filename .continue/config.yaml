@@ -1,0 +1,16 @@
+name: Local Config
+version: 1.0.0
+schema: v1
+models:
+  - title: Qwen Local
+    name: Qwen Local
+    provider: openai
+    model: qwen-plus
+    apiBase: https://face-voltage-photograph-packs.trycloudflare.com/v1
+    apiKey: sk-qwen-local-key-12345
+tabAutocompleteModel:
+  title: Qwen Local
+  model: qwen-plus
+  apiBase: https://face-voltage-photograph-packs.trycloudflare.com/v1
+  apiKey: sk-qwen-local-key-12345
+  provider: openai

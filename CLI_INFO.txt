@@ -1,0 +1,88 @@
+╔════════════════════════════════════════════════════════════════╗
+║          🤖 Qwen Code Terminal v1.0 - GUIA RÁPIDO              ║
+╚════════════════════════════════════════════════════════════════╝
+
+PARA USAR:
+
+1️⃣  Terminal 1 - Servidor:
+    npm run server
+
+2️⃣  Terminal 2 - CLI:
+    npm run cli
+
+3️⃣  Escolha no menu:
+    1. Explorar projeto
+    2. Chat com projeto
+    3. Sair
+
+4️⃣  Navegue com números:
+    1 = entra na pasta
+    ✅ = seleciona
+    ⬆️  = volta
+    ❌ = cancela
+
+5️⃣  No chat, digite o que quer:
+    "Crie arquivo X"
+    "Qual é a estrutura?"
+    "Corrija erro em linha Y"
+
+6️⃣  Para sair do chat:
+    @Digite: sair
+
+═══════════════════════════════════════════════════════════════════
+
+FEATURES:
+
+✅ Seleciona qualquer pasta do seu PC
+✅ Mostra estrutura completa do projeto  
+✅ Chat direto no terminal (sem bugues!)
+✅ Contexto total do projeto
+✅ Respostas coloridas e formatadas
+✅ Reconhece package.json e dependências
+✅ Ignora node_modules, .git, dist, build
+
+═══════════════════════════════════════════════════════════════════
+
+REQUISITOS:
+
+- Node.js 16+ instalado
+- Servidor rodando na porta 3001
+- Conexão com Qwen Mini
+
+═══════════════════════════════════════════════════════════════════
+
+TROUBLESHOOTING:
+
+❌ "Erro ao conectar"
+   → Verifique: npm run server está rodando? 
+   → Porta 3001 está livre?
+
+❌ "Timeout"
+   → Servidor pode estar ocupado
+   → Aguarde ou reinicie: npm run server
+
+❌ "Opção inválida"
+   → Digite um número da lista (1, 2, 3, etc)
+
+❌ Terminal congelado
+   → Pressione: Ctrl + C
+   → Abra terminal novo
+
+═══════════════════════════════════════════════════════════════════
+
+EXEMPLOS DE COMANDO NO CHAT:
+
+"Crie um arquivo .env com as variáveis"
+"Qual é o propósito da função X?"
+"Adicione um novo endpoint POST"
+"Corrija o erro na linha 42"
+"Explique a estrutura do projeto"
+"Crie um arquivo test.js simples"
+
+═══════════════════════════════════════════════════════════════════
+
+VER MAIS DETALHES:
+
+Abra o arquivo: CLI_GUIDE.md
+
+═══════════════════════════════════════════════════════════════════

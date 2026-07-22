@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Block Blast</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 600px;
+            width: 100%;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        h1 {
+            color: #333;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .stat-box {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        .stat-label {
+            font-size: 0.9em;
+            opacity: 0.9;
+            margin-bottom: 5px;
+        }
+
+        .stat-value {
+            font-size: 2em;
+            font-weight: bold;
+        }
+
+        .game-board {
+            background: #f0f0f0;
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+            aspect-ratio: 1;
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            grid-template-rows: repeat(8, 1fr);
+            gap: 8px;
+        }
+
+        .cell {
+            background: white;
+            border-radius: 10px;
+            border: 2px solid #e0e0e0;
+            cursor: grab;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 1.2em;
+            user-select: none;
+        }
+
+        .cell:hover {
+            transform: scale(0.95);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .cell.filled {
+            color: white;
+            font-weight: bold;
+            cursor: not-allowed;
+        }
+
+        .cell.red { background: linear-gradient(135deg, #ff6b6b, #ee5a6f); }
+        .cell.blue { background: linear-gradient(135deg, #4ecdc4, #44a3a0); }
+        .cell.yellow { background: linear-gradient(135deg, #ffd93d, #f5c800); color: #333; }
+        .cell.green { background: linear-gradient(135deg, #6bcf7f, #52b788); }
+        .cell.purple { background: linear-gradient(135deg, #b98ee8, #9d5bc7); }
+        .cell.orange { background: linear-gradient(135deg, #ff9f43, #ed7f23); }
+
+        .pieces-area {
+            background: #f9f9f9;
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+            min-height: 100px;
+        }
+
+        .pieces-label {
+            color: #666;
+            font-weight: bold;
+            margin-bottom: 15px;
+            font-size: 0.9em;
+        }
+
+        .pieces-container {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .piece {
+            width: 60px;
+            height: 60px;
+            border-radius: 8px;
+            cursor: grab;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            transition: all 0.2s ease;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .piece:hover {
+            transform: scale(1.1);
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+        }
+
+        .piece.red { background: linear-gradient(135deg, #ff6b6b, #ee5a6f); }
+        .piece.blue { background: linear-gradient(135deg, #4ecdc4, #44a3a0); }
+        .piece.yellow { background: linear-gradient(135deg, #ffd93d, #f5c800); color: #333; }
+        .piece.green { background: linear-gradient(135deg, #6bcf7f, #52b788); }
+        .piece.purple { background: linear-gradient(135deg, #b98ee8, #9d5bc7); }
+        .piece.orange { background: linear-gradient(135deg, #ff9f43, #ed7f23); }
+
+        .buttons {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+
+        button {
+            padding: 15px 30px;
+            font-size: 1em;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-primary:active {
+            transform: translateY(0);
+        }
+
+        .btn-secondary {
+            background: #e0e0e0;
+            color: #333;
+        }
+
+        .btn-secondary:hover {
+            background: #d0d0d0;
+        }
+
+        .game-over {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .game-over.active {
+            display: flex;
+        }
+
+        .game-over-content {
+            background: white;
+            padding: 40px;
+            border-radius: 20px;
+            text-align: center;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+
+        .game-over-content h2 {
+            color: #ff6b6b;
+            font-size: 2.5em;
+            margin-bottom: 20px;
+        }
+
+        .game-over-content p {
+            color: #666;
+            font-size: 1.2em;
+            margin-bottom: 10px;
+        }
+
+        .game-over-content .final-score {
+            color: #667eea;
+            font-size: 2em;
+            font-weight: bold;
+            margin: 20px 0;
+        }
+
+        .game-over-content button {
+            margin-top: 20px;
+        }
+
+        @media (max-width: 600px) {
+            .container {
+                padding: 20px;
+            }
+
+            h1 {
+                font-size: 1.8em;
+            }
+
+            .game-board {
+                padding: 15px;
+                gap: 5px;
+            }
+
+            .piece {
+                width: 50px;
+                height: 50px;
+                font-size: 0.9em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎮 Block Blast</h1>
+        </div>
+
+        <div class="stats">
+            <div class="stat-box">
+                <div class="stat-label">Pontuação</div>
+                <div class="stat-value" id="score">0</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">Recorde</div>
+                <div class="stat-value" id="highScore">0</div>
+            </div>
+        </div>
+
+        <div class="game-board" id="gameBoard"></div>
+
+        <div class="pieces-area">
+            <div class="pieces-label">📦 Próximas Peças (Clique ou Arraste)</div>
+            <div class="pieces-container" id="piecesArea"></div>
+        </div>
+
+        <div class="buttons">
+            <button class="btn-primary" onclick="game.restart()">🔄 Novo Jogo</button>
+            <button class="btn-secondary" onclick="game.toggleHelp()">❓ Ajuda</button>
+        </div>
+    </div>
+
+    <div class="game-over" id="gameOverModal">
+        <div class="game-over-content">
+            <h2>Game Over!</h2>
+            <p>Você não conseguiu colocar mais blocos no tabuleiro.</p>
+            <div class="final-score" id="finalScore">0</div>
+            <button class="btn-primary" onclick="game.restart()">🔄 Jogar Novamente</button>
+        </div>
+    </div>
+
+    <script>
+        const GRID_SIZE = 8;
+        const COLORS = ['red', 'blue', 'yellow', 'green', 'purple', 'orange'];
+        
+        const PIECE_SHAPES = {
+            single: [{ x: 0, y: 0 }],
+            line2: [{ x: 0, y: 0 }, { x: 1, y: 0 }],
+            line3: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 2, y: 0 }],
+            square: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }],
+            lshape: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 0, y: 1 }],
+            tshape: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 2, y: 0 }, { x: 1, y: 1 }]
+        };
+
+        class Game {
+            constructor() {
+                this.board = Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE).fill(null));
+                this.score = 0;
+                this.highScore = localStorage.getItem('blockBlastHighScore') || 0;
+                this.upcomingPieces = [];
+                this.selectedPiece = null;
+                this.gameOver = false;
+                this.generateUpcomingPieces();
+                this.render();
+            }
+
+            generateUpcomingPieces() {
+                const shapeKeys = Object.keys(PIECE_SHAPES);
+                while (this.upcomingPieces.length < 3) {
+                    const shape = shapeKeys[Math.floor(Math.random() * shapeKeys.length)];
+                    const color = COLORS[Math.floor(Math.random() * COLORS.length)];
+                    this.upcomingPieces.push({ shape, color });
+                }
+            }
+
+            getPieceBlocks(shape) {
+                return PIECE_SHAPES[shape];
+            }
+
+            canPlacePiece(piece, startRow, startCol) {
+                const blocks = this.getPieceBlocks(piece.shape);
+                for (const block of blocks) {
+                    const row = startRow + block.y;
+                    const col = startCol + block.x;
+                    if (row >= GRID_SIZE || col >= GRID_SIZE || this.board[row][col] !== null) {
+                        return false;
+                    }
+                }
+                return true;
+            }
+
+            placePiece(piece, startRow, startCol) {
+                const blocks = this.getPieceBlocks(piece.shape);
+                for (const block of blocks) {
+                    const row = startRow + block.y;
+                    const col = startCol + block.x;
+                    this.board[row][col] = piece.color;
+                }
+            }
+
+            checkAndClearLines() {
+                let cleared = 0;
+
+                // Check rows
+                for (let row = 0; row < GRID_SIZE; row++) {
+                    if (this.board[row].every(cell => cell !== null)) {
+                        this.board[row] = Array(GRID_SIZE).fill(null);
+                        cleared++;
+                    }
+                }
+
+                // Check columns
+                for (let col = 0; col < GRID_SIZE; col++) {
+                    if (this.board.every(row => row[col] !== null)) {
+                        for (let row = 0; row < GRID_SIZE; row++) {
+                            this.board[row][col] = null;
+                        }
+                        cleared++;
+                    }
+                }
+
+                if (cleared > 0) {
+                    this.score += cleared * 10;
+                    if (cleared > 1) {
+                        this.score += (cleared - 1) * 5; // Bonus para combos
+                    }
+                }
+
+                return cleared;
+            }
+
+            selectPiece(index) {
+                this.selectedPiece = index;
+                this.render();
+            }
+
+            placePieceAt(row, col) {
+                if (this.selectedPiece === null) return false;
+
+                const piece = this.upcomingPieces[this.selectedPiece];
+                
+                if (!this.canPlacePiece(piece, row, col)) {
+                    return false;
+                }
+
+                this.placePiece(piece, row, col);
+                this.checkAndClearLines();
+                this.upcomingPieces.splice(this.selectedPiece, 1);
+                this.generateUpcomingPieces();
+                this.selectedPiece = null;
+
+                if (!this.canPlaceAnyPiece()) {
+                    this.endGame();
+                }
+
+                this.render();
+                return true;
+            }
+
+            canPlaceAnyPiece() {
+                for (let row = 0; row < GRID_SIZE; row++) {
+                    for (let col = 0; col < GRID_SIZE; col++) {
+                        for (const piece of this.upcomingPieces) {
+                            if (this.canPlacePiece(piece, row, col)) {
+                                return true;
+                            }
+                        }
+                    }
+                }
+                return false;
+            }
+
+            endGame() {
+                this.gameOver = true;
+                if (this.score > this.highScore) {
+                    this.highScore = this.score;
+                    localStorage.setItem('blockBlastHighScore', this.highScore);
+                }
+                document.getElementById('finalScore').textContent = `Pontuação: ${this.score}`;
+                document.getElementById('gameOverModal').classList.add('active');
+            }
+
+            restart() {
+                this.board = Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE).fill(null));
+                this.score = 0;
+                this.gameOver = false;
+                this.selectedPiece = null;
+                this.upcomingPieces = [];
+                this.generateUpcomingPieces();
+                document.getElementById('gameOverModal').classList.remove('active');
+                this.render();
+            }
+
+            toggleHelp() {
+                alert('🎮 Como Jogar Block Blast:\n\n1. Clique em uma peça na parte inferior\n2. Clique em uma célula do tabuleiro para colocá-la\n3. Complete linhas ou colunas inteiras para destruí-las\n4. Ganhe 10 pontos por linha/coluna destruída\n5. Combos (múltiplas linhas) dão bônus extra\n6. Jogo termina quando nenhuma peça cabe mais\n\n💡 Dica: Pense estrategicamente onde colocar as peças!');
+            }
+
+            render() {
+                this.renderBoard();
+                this.renderPieces();
+                document.getElementById('score').textContent = this.score;
+                document.getElementById('highScore').textContent = this.highScore;
+            }
+
+            renderBoard() {
+                const boardEl = document.getElementById('gameBoard');
+                boardEl.innerHTML = '';
+
+                for (let row = 0; row < GRID_SIZE; row++) {
+                    for (let col = 0; col < GRID_SIZE; col++) {
+                        const cell = document.createElement('div');
+                        cell.className = 'cell';
+                        
+                        if (this.board[row][col]) {
+                            cell.classList.add('filled', this.board[row][col]);
+                        }
+                        
+                        cell.addEventListener('click', () => {
+                            if (!this.gameOver && this.selectedPiece !== null) {
+                                this.placePieceAt(row, col);
+                            }
+                        });
+
+                        boardEl.appendChild(cell);
+                    }
+                }
+            }
+
+            renderPieces() {
+                const piecesEl = document.getElementById('piecesArea');
+                piecesEl.innerHTML = '';
+
+                this.upcomingPieces.forEach((piece, index) => {
+                    const pieceEl = document.createElement('div');
+                    pieceEl.className = `piece ${piece.color}`;
+                    if (index === this.selectedPiece) {
+                        pieceEl.style.transform = 'scale(1.15)';
+                        pieceEl.style.boxShadow = '0 0 20px rgba(0, 0, 0, 0.3)';
+                    }
+                    pieceEl.textContent = '■';
+                    pieceEl.addEventListener('click', () => {
+                        this.selectPiece(index === this.selectedPiece ? null : index);
+                    });
+                    piecesEl.appendChild(pieceEl);
+                });
+            }
+        }
+
+        const game = new Game();
+    </script>
+</body>
+</html>

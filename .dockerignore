@@ -1,0 +1,8 @@
+node_modules
+dist
+.git
+.env
+server/auth.json
+server/conversations.json
+server/conversations.json.tmp
+npm-debug.log

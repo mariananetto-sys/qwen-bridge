@@ -1,0 +1,6 @@
+$env:CLAUDE_CODE_USE_OPENAI="1"
+$env:OPENAI_BASE_URL="http://localhost:3001/v1"
+$env:OPENAI_MODEL="qwen-mini"
+$env:OPENAI_API_KEY="sk-qwen-local-key-12345"
+
+openclaude

@@ -1,0 +1,9 @@
+{
+  "model": "qwen",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Qual é 2+2?"
+    }
+  ]
+}
