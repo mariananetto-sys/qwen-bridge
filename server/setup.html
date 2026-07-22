@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Conectar conta Qwen</title>
+    <style>
+      :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #101512; color: #edf2ed; }
+      body { max-width: 1120px; margin: 0 auto; padding: 24px; }
+      h1 { margin: 0 0 8px; font-size: 24px; }
+      p { color: #a7b1a8; } input, button { font: inherit; }
+      #key { box-sizing: border-box; width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #405046; background: #182019; color: inherit; }
+      #screen { display: block; width: 100%; margin-top: 18px; border: 1px solid #405046; border-radius: 10px; cursor: crosshair; }
+      .row { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; } button { padding: 9px 13px; border: 0; border-radius: 7px; background: #4b9b69; color: #07110a; cursor: pointer; }
+      #status { font: 13px ui-monospace, monospace; color: #99d7aa; }
+    </style>
+  </head>
+  <body>
+    <h1>Conectar sua conta Qwen</h1>
+    <p>Digite a chave do bridge. Depois, use a tela abaixo como um navegador: clique, digite e confirme o login. Esta tela não armazena a chave.</p>
+    <input id="key" type="password" autocomplete="off" placeholder="QWEN_API_KEY" />
+    <div class="row"><button id="refresh">Atualizar tela</button><button id="enter">Enter</button><button id="tab">Tab</button><span id="status"></span></div>
+    <img id="screen" alt="Tela de login do Qwen" />
+    <script>
+      const key = document.querySelector('#key'); const screen = document.querySelector('#screen'); const status = document.querySelector('#status');
+      const headers = () => ({ Authorization: `Bearer ${key.value}`, 'Content-Type': 'application/json' });
+      async function request(path, body) { const r = await fetch(path, { method: body ? 'POST' : 'GET', headers: headers(), body: body ? JSON.stringify(body) : undefined }); if (!r.ok) throw new Error(await r.text()); return r; }
+      async function update() { try { const s = await (await request('/setup/status')).json(); status.textContent = s.ready ? 'Conectado. Pode fechar esta tela.' : `Aguardando login: ${s.title || s.url}`; const r = await request('/setup/screenshot'); screen.src = URL.createObjectURL(await r.blob()); } catch (e) { status.textContent = 'Erro: confira a chave.'; } }
+      screen.addEventListener('click', async (event) => { const r = screen.getBoundingClientRect(); await request('/setup/click', { x: Math.round((event.clientX-r.left)*1280/r.width), y: Math.round((event.clientY-r.top)*800/r.height) }); await update(); });
+      key.addEventListener('keydown', async (event) => { if (event.key === 'Enter') update(); });
+      document.addEventListener('keydown', async (event) => { if (document.activeElement === key) return; if (event.key.length === 1) { await request('/setup/type', { text: event.key }); await update(); } });
+      document.querySelector('#refresh').onclick = update;
+      document.querySelector('#enter').onclick = async () => { await request('/setup/press', { key: 'Enter' }); await update(); };
+      document.querySelector('#tab').onclick = async () => { await request('/setup/press', { key: 'Tab' }); await update(); };
+    </script>
+  </body>
+</html>
