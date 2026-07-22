@@ -51,6 +51,15 @@ function authenticate(req, res, next) {
   next();
 }
 
+function setupInput(req, res, next) {
+  const { x, y, text, key } = req.body || {};
+  if (typeof x === "number" && (!Number.isFinite(x) || x < 0 || x > 1280)) return res.status(400).json({ error: "Invalid x" });
+  if (typeof y === "number" && (!Number.isFinite(y) || y < 0 || y > 800)) return res.status(400).json({ error: "Invalid y" });
+  if (typeof text === "string" && text.length > 256) return res.status(400).json({ error: "Text too long" });
+  if (typeof key === "string" && !["Enter", "Tab", "Escape"].includes(key)) return res.status(400).json({ error: "Unsupported key" });
+  next();
+}
+
 const queue = [];
 let processing = false;
 
@@ -167,6 +176,18 @@ app.get("/v1/models", authenticate, (_req, res) => {
 app.get("/health", (_req, res) => {
   res.status(qwen.isReady ? 200 : 503).json({ status: qwen.isReady ? "ok" : "starting", queueSize: queue.length, processing, browserReady: qwen.isReady });
 });
+
+// Usado somente para o primeiro login. Todas as rotas exigem a chave do bridge;
+// não expõem cookies nem o conteúdo das conversas para o navegador do usuário.
+app.get("/setup", (_req, res) => res.sendFile(path.join(__dirname, "setup.html")));
+app.get("/setup/status", authenticate, async (_req, res) => res.json(await qwen.setupStatus()));
+app.get("/setup/screenshot", authenticate, async (_req, res) => {
+  try { res.type("png").send(await qwen.setupScreenshot()); }
+  catch { res.status(503).json({ error: "Browser is not available" }); }
+});
+app.post("/setup/click", authenticate, setupInput, async (req, res) => res.json(await qwen.setupClick(req.body.x, req.body.y)));
+app.post("/setup/type", authenticate, setupInput, async (req, res) => res.json(await qwen.setupType(req.body.text || "")));
+app.post("/setup/press", authenticate, setupInput, async (req, res) => res.json(await qwen.setupPress(req.body.key)));
 
 app.use((error, _req, res, _next) => {
   void _next;

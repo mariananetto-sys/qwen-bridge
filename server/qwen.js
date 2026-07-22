@@ -47,9 +47,10 @@ class QwenBridge {
     this.page.setDefaultNavigationTimeout(60_000);
     await this.page.goto(TARGET_URL, { waitUntil: "domcontentloaded" });
     await this.handleLogin();
-    await this.page.waitForSelector(SELECTORS.input, { state: "visible", timeout: 120_000 });
-    await this.persistSession();
-    this.isReady = true;
+    // A conta pode pedir CAPTCHA, código de e-mail ou outro desafio. O servidor
+    // continua disponível para a tela protegida /setup nesses casos, em vez de
+    // reiniciar indefinidamente e perder a chance de concluir o login manual.
+    await this.refreshReadiness(2_000);
   }
 
   async handleLogin() {
@@ -81,6 +82,50 @@ class QwenBridge {
 
   async persistSession() {
     await this.context.storageState({ path: AUTH_FILE });
+  }
+
+  async refreshReadiness(timeout = 1_000) {
+    if (!this.page) {
+      this.isReady = false;
+      return false;
+    }
+    this.isReady = await this.page.locator(SELECTORS.input).first()
+      .isVisible({ timeout })
+      .catch(() => false);
+    if (this.isReady) await this.persistSession();
+    return this.isReady;
+  }
+
+  async setupStatus() {
+    const ready = await this.refreshReadiness();
+    return {
+      ready,
+      url: this.page?.url() || null,
+      title: this.page ? await this.page.title().catch(() => "") : "",
+    };
+  }
+
+  async setupScreenshot() {
+    if (!this.page) throw new Error("BRIDGE_NOT_READY");
+    return this.page.screenshot({ type: "png" });
+  }
+
+  async setupClick(x, y) {
+    if (!this.page) throw new Error("BRIDGE_NOT_READY");
+    await this.page.mouse.click(x, y);
+    return this.setupStatus();
+  }
+
+  async setupType(text) {
+    if (!this.page) throw new Error("BRIDGE_NOT_READY");
+    await this.page.keyboard.type(text);
+    return this.setupStatus();
+  }
+
+  async setupPress(key) {
+    if (!this.page) throw new Error("BRIDGE_NOT_READY");
+    await this.page.keyboard.press(key);
+    return this.setupStatus();
   }
 
   async openThread(threadUrl) {
@@ -131,7 +176,7 @@ class QwenBridge {
   }
 
   async ask(message, { threadUrl = null, modelName = null } = {}) {
-    if (!this.isReady) throw new Error("BRIDGE_NOT_READY");
+    if (!this.isReady && !(await this.refreshReadiness())) throw new Error("BRIDGE_NOT_READY");
     await this.openThread(threadUrl);
     if (!threadUrl) await this.switchModel(modelName);
     const textarea = this.page.locator(SELECTORS.input).first();
