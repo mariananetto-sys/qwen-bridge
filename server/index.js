@@ -15,6 +15,7 @@ fs.mkdirSync(STATE_DIR, { recursive: true });
 const app = express();
 const PORT = Number(process.env.PORT || 3001);
 const API_KEY = process.env.QWEN_API_KEY || "";
+const SEARXNG_URL = (process.env.SEARXNG_URL || "http://searxng:8080").replace(/\/+$/, "");
 const MAX_CONCURRENT_GENERATIONS = Math.max(1, Number(process.env.MAX_CONCURRENT_GENERATIONS || 3));
 const THREADS_FILE = path.join(STATE_DIR, "conversations.json");
 const SYSTEM_PROMPT = process.env.QWEN_SYSTEM_PROMPT || `Você é a IA de Chat do SKMake, um workspace para criação e manutenção de projetos Skript para servidores Minecraft.
@@ -202,12 +203,58 @@ app.post("/v1/conversations/:id/cancel", authenticate, async (req, res) => {
   res.json({ stopped });
 });
 
+app.get("/v1/search", authenticate, async (req, res) => {
+  const query = typeof req.query.q === "string" ? req.query.q.replace(/\s+/g, " ").trim().slice(0, 500) : "";
+  const limit = Math.min(10, Math.max(1, Number.parseInt(String(req.query.limit || "7"), 10) || 7));
+  if (query.length < 2) return res.status(400).json({ error: { message: "q is required", code: "invalid_request" } });
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+  try {
+    const endpoint = new URL(`${SEARXNG_URL}/search`);
+    endpoint.searchParams.set("q", query);
+    endpoint.searchParams.set("format", "json");
+    endpoint.searchParams.set("language", "all");
+    endpoint.searchParams.set("safesearch", "1");
+    const upstream = await fetch(endpoint, { headers: { Accept: "application/json" }, signal: controller.signal });
+    if (!upstream.ok) return res.status(503).json({ error: { message: "Search is unavailable", code: "search_unavailable" } });
+    const payload = await upstream.json().catch(() => null);
+    const results = [];
+    for (const item of Array.isArray(payload?.results) ? payload.results : []) {
+      if (typeof item?.url !== "string" || typeof item?.title !== "string") continue;
+      let url;
+      try {
+        url = new URL(item.url);
+        if (url.protocol !== "https:" && url.protocol !== "http:") continue;
+      } catch { continue; }
+      results.push({
+        title: item.title.replace(/\0/g, "").trim().slice(0, 180),
+        url: url.toString(),
+        content: typeof item.content === "string" ? item.content.replace(/\0/g, "").trim().slice(0, 3_500) : "",
+        score: typeof item.score === "number" && Number.isFinite(item.score) ? item.score : null,
+      });
+      if (results.length >= limit) break;
+    }
+    return res.json({ query, results });
+  } catch {
+    return res.status(503).json({ error: { message: "Search is unavailable", code: "search_unavailable" } });
+  } finally {
+    clearTimeout(timeout);
+  }
+});
+
 app.get("/v1/models", authenticate, (_req, res) => {
   res.json({ object: "list", data: ["qwen3.8-max", "qwen3.7-max", "qwen3.7-plus", "qwen3.6-plus", "qwen3.5-plus", "qwen3.5-omni-plus"].map((id) => ({ id, object: "model", created: 0, owned_by: "qwen-bridge" })) });
 });
 
-app.get("/health", (_req, res) => {
-  res.status(qwen.isReady ? 200 : 503).json({ status: qwen.isReady ? "ok" : "starting", activeGenerations, maxConcurrentGenerations: MAX_CONCURRENT_GENERATIONS, browserReady: qwen.isReady });
+app.get("/health", async (_req, res) => {
+  let searchReady = false;
+  try {
+    const response = await fetch(`${SEARXNG_URL}/`, { signal: AbortSignal.timeout(2_000) });
+    searchReady = response.ok;
+    await response.body?.cancel();
+  } catch { /* O chat continua disponível enquanto a pesquisa reinicia. */ }
+  res.status(qwen.isReady ? 200 : 503).json({ status: qwen.isReady ? "ok" : "starting", activeGenerations, maxConcurrentGenerations: MAX_CONCURRENT_GENERATIONS, browserReady: qwen.isReady, searchReady });
 });
 
 // Usado somente para o primeiro login. Todas as rotas exigem a chave do bridge;

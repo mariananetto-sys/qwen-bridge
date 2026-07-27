@@ -2,7 +2,7 @@
 
 Bridge privado e compatível com `POST /v1/chat/completions` que conecta o Chat do SKMake a uma sessão persistente em `chat.qwen.ai` por meio do Playwright.
 
-O bridge não possui ferramentas e não acessa arquivos do projeto. O SKMake envia apenas o contexto selecionado e o pedido atual. Cada conversa do SKMake é associada ao seu próprio chat no Qwen. O relay browser→Node entrega SSE incremental real e permite até três conversas simultâneas por padrão.
+O bridge não acessa arquivos do projeto. O SKMake envia apenas o contexto selecionado e o pedido atual. Cada conversa do SKMake é associada ao seu próprio chat no Qwen. O relay browser→Node entrega SSE incremental real e permite até três conversas simultâneas por padrão. A pesquisa web usa um SearXNG privado no mesmo Docker, sem conta ou chave de serviço de busca.
 
 ## Instalação na máquina Google
 
@@ -19,12 +19,14 @@ Configure no `.env` uma chave longa em `QWEN_API_KEY`, as credenciais da conta Q
 
 Os arquivos `server/auth.json` e `server/conversations.json` contêm, respectivamente, a sessão autenticada e o mapa local de conversas. Eles devem permanecer em disco persistente, nunca entrar no Git e ter acesso restrito ao usuário do serviço.
 
-Com Docker, mantenha o estado em um volume persistente:
+Com Docker Compose, mantenha o estado em um volume persistente e inicie também o buscador privado:
 
 ```bash
-docker build -t qwen-bridge .
-docker run -d --name qwen-bridge --restart unless-stopped --env-file .env -p 3001:3001 -v qwen-state:/data qwen-bridge
+docker rm -f qwen-bridge 2>/dev/null || true
+docker compose up -d --build
 ```
+
+O Compose reutiliza o volume existente `qwen-state`, preservando login e conversas. Somente a porta `3001` é publicada. O SearXNG permanece na rede interna e sua rota `/v1/search` exige a mesma autenticação privada do bridge.
 
 ## Variáveis do SKMake na Vercel
 
@@ -43,6 +45,7 @@ Execute também `npm run db:deploy:turso` no projeto SKMake para adicionar os ca
 
 - `POST /v1/chat/completions`: cria ou continua uma conversa.
 - `GET /v1/models`: lista os nomes aceitos pelo bridge.
+- `GET /v1/search?q=consulta&limit=7`: pesquisa a web pelo SearXNG privado.
 - `GET /health`: informa navegador, gerações simultâneas e disponibilidade.
 - `POST /v1/conversations/:id/cancel`: tenta interromper a geração atual.
 

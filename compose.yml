@@ -1,0 +1,29 @@
+services:
+  qwen-bridge:
+    build: .
+    container_name: qwen-bridge
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      SEARXNG_URL: http://searxng:8080
+    ports:
+      - "3001:3001"
+    volumes:
+      - qwen-state:/data
+    depends_on:
+      - searxng
+
+  searxng:
+    image: searxng/searxng:latest
+    container_name: skmake-search
+    restart: unless-stopped
+    expose:
+      - "8080"
+    volumes:
+      - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
+      - searxng-cache:/var/cache/searxng
+
+volumes:
+  qwen-state:
+    external: true
+  searxng-cache:
