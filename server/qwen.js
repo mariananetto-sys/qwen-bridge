@@ -231,7 +231,9 @@ class QwenBridge {
     const resolvedFallbackIndex = fallbackModelIds.indexOf(resolvedModelId);
     const remainingFallbacks = resolvedModelId === modelId ? fallbackModelIds : fallbackModelIds.slice(resolvedFallbackIndex + 1);
     const timestamp = Math.floor(Date.now() / 1000);
-    const thinkingEnabled = reasoningEffort !== "none";
+    const requiresThinking = resolvedModelId === "qwen3.8-max-preview";
+    const thinkingEnabled = requiresThinking || reasoningEffort !== "none";
+    const automaticThinking = reasoningEffort === "adaptive" || (requiresThinking && reasoningEffort === "none");
     const payload = {
       stream: true,
       version: "2.1",
@@ -255,8 +257,8 @@ class QwenBridge {
           thinking_enabled: thinkingEnabled,
           output_schema: "phase",
           research_mode: "normal",
-          auto_thinking: reasoningEffort === "adaptive",
-          thinking_mode: thinkingEnabled ? "Thinking" : "Auto",
+          auto_thinking: automaticThinking,
+          thinking_mode: automaticThinking ? "Auto" : thinkingEnabled ? "Thinking" : "Auto",
           thinking_format: "summary",
           auto_search: false,
         },

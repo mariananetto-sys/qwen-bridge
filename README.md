@@ -36,7 +36,7 @@ QWEN_BRIDGE_API_KEY=a-mesma-chave-do-QWEN_API_KEY
 QWEN_BRIDGE_MODEL=qwen3.7-plus
 QWEN_BRIDGE_MODEL_HIGH=qwen3.7-plus
 QWEN_BRIDGE_MODEL_PRO=qwen3.7-max
-QWEN_BRIDGE_MODEL_SPECIALIZED=qwen3.8-max
+QWEN_BRIDGE_MODEL_SPECIALIZED=qwen3.8-max-preview
 ```
 
 Execute também `npm run db:deploy:turso` no projeto SKMake para adicionar os campos que guardam a URL externa da conversa.

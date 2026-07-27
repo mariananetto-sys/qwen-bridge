@@ -66,9 +66,10 @@ let activeGenerations = 0;
 const activeStreams = new Map();
 
 function normalizeModel(model) {
-  const normalized = String(model || "qwen3.7-plus").toLowerCase();
+  const requested = String(model || "qwen3.7-plus").toLowerCase();
+  const normalized = requested === "qwen3.8-max" ? "qwen3.8-max-preview" : requested;
   const models = {
-    "qwen3.8-max": "Qwen3.8-Max",
+    "qwen3.8-max-preview": "Qwen3.8-Max-Preview",
     "qwen3.7-max": "Qwen3.7-Max",
     "qwen3.7-plus": "Qwen3.7-Plus",
     "qwen3.6-plus": "Qwen3.6-Plus",
@@ -80,7 +81,7 @@ function normalizeModel(model) {
 
 function fallbackModels(modelId) {
   const fallbacks = {
-    "qwen3.8-max": ["qwen3.7-max", "qwen3.7-plus"],
+    "qwen3.8-max-preview": ["qwen3.7-max", "qwen3.7-plus"],
     "qwen3.7-max": ["qwen3.7-plus"],
   };
   return fallbacks[modelId] || [];
@@ -258,7 +259,7 @@ app.get("/v1/search", authenticate, async (req, res) => {
 });
 
 app.get("/v1/models", authenticate, (_req, res) => {
-  res.json({ object: "list", data: ["qwen3.8-max", "qwen3.7-max", "qwen3.7-plus", "qwen3.6-plus", "qwen3.5-plus", "qwen3.5-omni-plus"].map((id) => ({ id, object: "model", created: 0, owned_by: "qwen-bridge" })) });
+  res.json({ object: "list", data: ["qwen3.8-max-preview", "qwen3.7-max", "qwen3.7-plus", "qwen3.6-plus", "qwen3.5-plus", "qwen3.5-omni-plus"].map((id) => ({ id, object: "model", created: 0, owned_by: "qwen-bridge" })) });
 });
 
 app.get("/health", async (_req, res) => {
