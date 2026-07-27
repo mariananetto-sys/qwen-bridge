@@ -2,7 +2,7 @@
 
 Bridge privado e compatível com `POST /v1/chat/completions` que conecta o Chat do SKMake a uma sessão persistente em `chat.qwen.ai` por meio do Playwright.
 
-O bridge não possui ferramentas e não acessa arquivos do projeto. O SKMake envia apenas o contexto selecionado e o pedido atual. Cada conversa do SKMake é associada à URL correspondente no Qwen e as requisições são processadas por uma fila única para impedir que duas conversas usem a mesma página ao mesmo tempo.
+O bridge não possui ferramentas e não acessa arquivos do projeto. O SKMake envia apenas o contexto selecionado e o pedido atual. Cada conversa do SKMake é associada ao seu próprio chat no Qwen. O relay browser→Node entrega SSE incremental real e permite até três conversas simultâneas por padrão.
 
 ## Instalação na máquina Google
 
@@ -32,7 +32,6 @@ docker run -d --name qwen-bridge --restart unless-stopped --env-file .env -p 300
 QWEN_BRIDGE_URL=https://qwen.seu-dominio.com
 QWEN_BRIDGE_API_KEY=a-mesma-chave-do-QWEN_API_KEY
 QWEN_BRIDGE_MODEL=qwen3.7-plus
-QWEN_BRIDGE_TIERS=HIGH,PRO,SPECIALIZED
 QWEN_BRIDGE_MODEL_HIGH=qwen3.7-plus
 QWEN_BRIDGE_MODEL_PRO=qwen3.7-max
 QWEN_BRIDGE_MODEL_SPECIALIZED=qwen3.8-max
@@ -44,7 +43,7 @@ Execute também `npm run db:deploy:turso` no projeto SKMake para adicionar os ca
 
 - `POST /v1/chat/completions`: cria ou continua uma conversa.
 - `GET /v1/models`: lista os nomes aceitos pelo bridge.
-- `GET /health`: informa navegador, fila e disponibilidade.
+- `GET /health`: informa navegador, gerações simultâneas e disponibilidade.
 - `POST /v1/conversations/:id/cancel`: tenta interromper a geração atual.
 
 Extensões aceitas no corpo de chat:
@@ -52,8 +51,8 @@ Extensões aceitas no corpo de chat:
 ```json
 {
   "conversation_id": "id-da-conversa-skmake",
-  "provider_thread_url": "https://chat.qwen.ai/c/..."
+  "reasoning_effort": "adaptive"
 }
 ```
 
-A resposta devolve a URL atual em `X-Qwen-Thread-Url`, permitindo ao SKMake restaurar exatamente a mesma conversa depois.
+`conversation_id` é a identidade persistente usada pelo bridge. A resposta devolve a URL atual em `X-Qwen-Thread-Url`; o estado local guarda também o último `parentId` do Qwen para continuar no ponto correto.

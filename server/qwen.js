@@ -1,9 +1,11 @@
 /* global process */
 import "dotenv/config";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
+import { browserJsonFetch, browserStreamFetch } from "./browser-stream.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const STATE_DIR = process.env.QWEN_STATE_DIR ? path.resolve(process.env.QWEN_STATE_DIR) : __dirname;
@@ -11,6 +13,7 @@ fs.mkdirSync(STATE_DIR, { recursive: true });
 const AUTH_FILE = path.join(STATE_DIR, "auth.json");
 const TARGET_URL = "https://chat.qwen.ai/";
 const GENERATION_TIMEOUT_MS = Math.max(30_000, Number(process.env.QWEN_GENERATION_TIMEOUT_MS || 270_000));
+const QWEN_WEB_VERSION = process.env.QWEN_WEB_VERSION || "0.2.66";
 
 const SELECTORS = {
   input: "textarea",
@@ -173,6 +176,100 @@ class QwenBridge {
     } catch (error) {
       console.warn(`Could not select ${modelName}; keeping the current Qwen model.`, error instanceof Error ? error.message : error);
     }
+  }
+
+  async createChat(modelId) {
+    if (!this.isReady && !(await this.refreshReadiness())) throw new Error("BRIDGE_NOT_READY");
+    const result = await browserJsonFetch(this.page, "https://chat.qwen.ai/api/v2/chats/new", {
+      method: "POST",
+      headers: {
+        Accept: "application/json, text/plain, */*",
+        "Content-Type": "application/json",
+        "X-Request-Id": crypto.randomUUID(),
+        Timezone: new Date().toString().split(" (")[0],
+        Version: QWEN_WEB_VERSION,
+        Source: "web",
+      },
+      body: JSON.stringify({
+        title: "SKMake",
+        models: [modelId],
+        chat_mode: "normal",
+        chat_type: "t2t",
+        timestamp: Date.now(),
+        project_id: "",
+      }),
+      timeoutMs: 30_000,
+    });
+    if (result.status >= 400) throw new Error(`QWEN_CREATE_CHAT_${result.status}`);
+    let payload;
+    try { payload = JSON.parse(result.body); } catch { throw new Error("QWEN_CREATE_CHAT_INVALID_RESPONSE"); }
+    const chatId = payload.chat_id || payload.id || payload.data?.chat_id || payload.data?.id;
+    if (!chatId) throw new Error("QWEN_CREATE_CHAT_INVALID_RESPONSE");
+    return chatId;
+  }
+
+  async createCompletionStream(message, { chatId = null, parentId = null, modelId = "qwen3.7-plus", reasoningEffort = "adaptive" } = {}) {
+    if (!this.isReady && !(await this.refreshReadiness())) throw new Error("BRIDGE_NOT_READY");
+    const resolvedChatId = chatId || await this.createChat(modelId);
+    const timestamp = Math.floor(Date.now() / 1000);
+    const thinkingEnabled = reasoningEffort !== "none";
+    const payload = {
+      stream: true,
+      version: "2.1",
+      incremental_output: true,
+      chat_id: resolvedChatId,
+      chat_mode: "normal",
+      model: modelId,
+      parent_id: parentId,
+      messages: [{
+        fid: crypto.randomUUID(),
+        parentId,
+        childrenIds: [],
+        role: "user",
+        content: message,
+        user_action: "chat",
+        files: [],
+        timestamp,
+        models: [modelId],
+        chat_type: "t2t",
+        feature_config: {
+          thinking_enabled: thinkingEnabled,
+          output_schema: "phase",
+          research_mode: "normal",
+          auto_thinking: reasoningEffort === "adaptive",
+          thinking_mode: thinkingEnabled ? "Thinking" : "Auto",
+          thinking_format: "summary",
+          auto_search: false,
+        },
+        extra: { meta: { subChatType: "t2t" } },
+        sub_chat_type: "t2t",
+        parent_id: parentId,
+      }],
+      timestamp: timestamp + 1,
+    };
+    const result = await browserStreamFetch(
+      this.page,
+      `https://chat.qwen.ai/api/v2/chat/completions?chat_id=${encodeURIComponent(resolvedChatId)}`,
+      {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          "X-Accel-Buffering": "no",
+          "X-Request-Id": crypto.randomUUID(),
+          Timezone: new Date().toString().split(" (")[0],
+          Version: QWEN_WEB_VERSION,
+          Source: "web",
+        },
+        body: JSON.stringify(payload),
+        timeoutMs: GENERATION_TIMEOUT_MS,
+      },
+    );
+    return {
+      ...result,
+      chatId: resolvedChatId,
+      threadUrl: `https://chat.qwen.ai/c/${resolvedChatId}`,
+    };
   }
 
   async ask(message, { threadUrl = null, modelName = null } = {}) {

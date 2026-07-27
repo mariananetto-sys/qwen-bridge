@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import cors from "cors";
 import express from "express";
 import qwen from "./qwen.js";
+import { QwenSseParser } from "./qwen-sse.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const STATE_DIR = process.env.QWEN_STATE_DIR ? path.resolve(process.env.QWEN_STATE_DIR) : __dirname;
@@ -14,7 +15,7 @@ fs.mkdirSync(STATE_DIR, { recursive: true });
 const app = express();
 const PORT = Number(process.env.PORT || 3001);
 const API_KEY = process.env.QWEN_API_KEY || "";
-const MAX_QUEUE_SIZE = Math.max(1, Number(process.env.MAX_QUEUE_SIZE || 50));
+const MAX_CONCURRENT_GENERATIONS = Math.max(1, Number(process.env.MAX_CONCURRENT_GENERATIONS || 3));
 const THREADS_FILE = path.join(STATE_DIR, "conversations.json");
 const SYSTEM_PROMPT = process.env.QWEN_SYSTEM_PROMPT || `Você é a IA de Chat do SKMake, um workspace para criação e manutenção de projetos Skript para servidores Minecraft.
 
@@ -60,30 +61,8 @@ function setupInput(req, res, next) {
   next();
 }
 
-const queue = [];
-let processing = false;
-
-function enqueue(job) {
-  if (queue.length >= MAX_QUEUE_SIZE) return Promise.reject(new Error("BRIDGE_QUEUE_FULL"));
-  return new Promise((resolve, reject) => {
-    queue.push({ job, resolve, reject });
-    void processQueue();
-  });
-}
-
-async function processQueue() {
-  if (processing) return;
-  processing = true;
-  while (queue.length) {
-    const item = queue.shift();
-    try {
-      item.resolve(await item.job());
-    } catch (error) {
-      item.reject(error);
-    }
-  }
-  processing = false;
-}
+let activeGenerations = 0;
+const activeStreams = new Map();
 
 function normalizeModel(model) {
   const normalized = String(model || "qwen3.7-plus").toLowerCase();
@@ -113,9 +92,13 @@ function buildPrompt(messages, hasExistingThread) {
 function errorStatus(error) {
   const code = error instanceof Error ? error.message : "BRIDGE_ERROR";
   if (code === "MESSAGES_REQUIRED") return 400;
-  if (code === "BRIDGE_QUEUE_FULL") return 429;
+  if (code === "BRIDGE_BUSY") return 429;
   if (code === "QWEN_TIMEOUT") return 504;
   return 502;
+}
+
+function openAiChunk(base, delta, finishReason = null) {
+  return `data: ${JSON.stringify({ ...base, object: "chat.completion.chunk", choices: [{ index: 0, delta, finish_reason: finishReason }] })}\n\n`;
 }
 
 app.post("/v1/chat/completions", authenticate, async (req, res) => {
@@ -123,52 +106,99 @@ app.post("/v1/chat/completions", authenticate, async (req, res) => {
   if (!Array.isArray(messages) || messages.length === 0) return res.status(400).json({ error: { message: "messages is required", code: "invalid_request" } });
 
   const conversationId = typeof req.body.conversation_id === "string" && req.body.conversation_id.length <= 160 ? req.body.conversation_id : null;
-  const suppliedThreadUrl = typeof req.body.provider_thread_url === "string" ? req.body.provider_thread_url : null;
-  const storedThreadUrl = conversationId ? threads[conversationId]?.url : null;
-  const threadUrl = suppliedThreadUrl || storedThreadUrl || null;
   const model = normalizeModel(req.body.model);
-  const prompt = buildPrompt(messages, Boolean(threadUrl));
+  const stored = conversationId ? threads[conversationId] : null;
+  const chatId = stored?.chatId || null;
+  const prompt = buildPrompt(messages, Boolean(chatId));
   const requestId = crypto.randomUUID();
+  if (activeGenerations >= MAX_CONCURRENT_GENERATIONS) return res.status(429).json({ error: { message: "The bridge is processing too many conversations.", code: "BRIDGE_BUSY" } });
+  if (conversationId && activeStreams.has(conversationId)) return res.status(409).json({ error: { message: "This conversation already has an active response.", code: "CONVERSATION_BUSY" } });
+  activeGenerations += 1;
 
   try {
-    const result = await enqueue(() => qwen.ask(prompt, { threadUrl, modelName: model.displayName }));
-    if (conversationId && result.threadUrl) {
-      threads[conversationId] = { url: result.threadUrl, model: model.id, updatedAt: new Date().toISOString() };
+    const completion = await qwen.createCompletionStream(prompt, {
+      chatId,
+      parentId: stored?.parentId || null,
+      modelId: model.id,
+      reasoningEffort: typeof req.body.reasoning_effort === "string" ? req.body.reasoning_effort : "adaptive",
+    });
+    if (conversationId) {
+      threads[conversationId] = {
+        chatId: completion.chatId,
+        parentId: stored?.parentId || null,
+        url: completion.threadUrl,
+        model: model.id,
+        updatedAt: new Date().toISOString(),
+      };
       saveThreads();
+      activeStreams.set(conversationId, completion.cancel);
     }
 
     const base = {
       id: `chatcmpl-${requestId}`,
       created: Math.floor(Date.now() / 1000),
       model: model.id,
-      provider_thread_url: result.threadUrl,
+      provider_thread_url: completion.threadUrl,
       conversation_id: conversationId,
     };
-    res.setHeader("X-Qwen-Thread-Url", result.threadUrl || "");
+    res.setHeader("X-Qwen-Thread-Url", completion.threadUrl || "");
     res.setHeader("X-SKMake-Provider-Id", `qwen-bridge/${model.id}`);
-
+    const parser = new QwenSseParser();
+    const reader = completion.stream.getReader();
+    const decoder = new TextDecoder();
+    let reasoning = "";
+    let content = "";
     if (stream) {
-      res.writeHead(200, { "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-cache, no-transform", Connection: "keep-alive" });
-      res.write(`data: ${JSON.stringify({ ...base, object: "chat.completion.chunk", choices: [{ index: 0, delta: { content: result.text }, finish_reason: "stop" }] })}\n\n`);
+      res.writeHead(200, { "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-cache, no-transform", Connection: "keep-alive", "X-Accel-Buffering": "no" });
+      res.flushHeaders?.();
+      res.write(openAiChunk(base, { role: "assistant" }));
+    }
+    res.on("close", () => {
+      if (!res.writableEnded) completion.cancel();
+    });
+    while (true) {
+      const { done, value } = await reader.read();
+      const events = parser.push(value ? decoder.decode(value, { stream: true }) : "", done);
+      for (const event of events) {
+        if (event.content) {
+          content += event.content;
+          if (stream) res.write(openAiChunk(base, { content: event.content }));
+        }
+        if (event.reasoning) {
+          reasoning += event.reasoning;
+          if (stream) res.write(openAiChunk(base, { reasoning_content: event.reasoning }));
+        }
+      }
+      if (parser.responseId && conversationId && threads[conversationId]?.parentId !== parser.responseId) {
+        threads[conversationId] = { ...threads[conversationId], parentId: parser.responseId, updatedAt: new Date().toISOString() };
+        saveThreads();
+      }
+      if (done) break;
+    }
+    if (stream) {
+      res.write(openAiChunk(base, {}, "stop"));
       res.write("data: [DONE]\n\n");
       return res.end();
     }
-
-    return res.json({
-      ...base,
-      object: "chat.completion",
-      choices: [{ index: 0, message: { role: "assistant", content: result.text }, finish_reason: "stop" }],
-      usage: { prompt_tokens: -1, completion_tokens: -1, total_tokens: -1 },
-    });
+    return res.json({ ...base, object: "chat.completion", choices: [{ index: 0, message: { role: "assistant", content, reasoning_content: reasoning }, finish_reason: "stop" }], usage: { prompt_tokens: -1, completion_tokens: -1, total_tokens: -1 } });
   } catch (error) {
     const code = error instanceof Error ? error.message : "BRIDGE_ERROR";
     console.error(JSON.stringify({ event: "qwen_bridge.error", requestId, conversationId, code }));
+    if (res.headersSent) {
+      res.write("data: [DONE]\n\n");
+      return res.end();
+    }
     return res.status(errorStatus(error)).json({ error: { message: "The Qwen bridge could not complete the request", code } });
+  } finally {
+    activeGenerations = Math.max(0, activeGenerations - 1);
+    if (conversationId) activeStreams.delete(conversationId);
   }
 });
 
-app.post("/v1/conversations/:id/cancel", authenticate, async (_req, res) => {
-  const stopped = await qwen.stop().catch(() => false);
+app.post("/v1/conversations/:id/cancel", authenticate, async (req, res) => {
+  const cancel = activeStreams.get(req.params.id);
+  if (cancel) cancel();
+  const stopped = Boolean(cancel);
   res.json({ stopped });
 });
 
@@ -177,7 +207,7 @@ app.get("/v1/models", authenticate, (_req, res) => {
 });
 
 app.get("/health", (_req, res) => {
-  res.status(qwen.isReady ? 200 : 503).json({ status: qwen.isReady ? "ok" : "starting", queueSize: queue.length, processing, browserReady: qwen.isReady });
+  res.status(qwen.isReady ? 200 : 503).json({ status: qwen.isReady ? "ok" : "starting", activeGenerations, maxConcurrentGenerations: MAX_CONCURRENT_GENERATIONS, browserReady: qwen.isReady });
 });
 
 // Usado somente para o primeiro login. Todas as rotas exigem a chave do bridge;
