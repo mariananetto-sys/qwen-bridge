@@ -15,7 +15,7 @@ cp .env.example .env
 npm run server
 ```
 
-Configure no `.env` uma chave longa em `QWEN_API_KEY`, as credenciais da conta Qwen, `QWEN_HEADLESS=true` e o domínio do SKMake em `ALLOWED_ORIGIN`.
+Configure no `.env` uma chave longa em `QWEN_API_KEY`, as credenciais da conta Qwen, `QWEN_HEADLESS=true`, o domínio do SKMake em `ALLOWED_ORIGIN` e uma chave aleatória em `SEARXNG_SECRET`. No Linux, você pode gerar essa última com `openssl rand -hex 32`.
 
 Os arquivos `server/auth.json` e `server/conversations.json` contêm, respectivamente, a sessão autenticada e o mapa local de conversas. Eles devem permanecer em disco persistente, nunca entrar no Git e ter acesso restrito ao usuário do serviço.
 

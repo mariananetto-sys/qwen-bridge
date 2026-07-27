@@ -17,6 +17,8 @@ services:
     image: searxng/searxng:latest
     container_name: skmake-search
     restart: unless-stopped
+    environment:
+      SEARXNG_SECRET: ${SEARXNG_SECRET:?Defina SEARXNG_SECRET no arquivo .env}
     expose:
       - "8080"
     volumes:
