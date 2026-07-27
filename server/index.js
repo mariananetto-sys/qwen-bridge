@@ -78,6 +78,14 @@ function normalizeModel(model) {
   return { id: models[normalized] ? normalized : "qwen3.7-plus", displayName: models[normalized] || models["qwen3.7-plus"] };
 }
 
+function fallbackModels(modelId) {
+  const fallbacks = {
+    "qwen3.8-max": ["qwen3.7-max", "qwen3.7-plus"],
+    "qwen3.7-max": ["qwen3.7-plus"],
+  };
+  return fallbacks[modelId] || [];
+}
+
 function buildPrompt(messages, hasExistingThread) {
   const system = messages.filter((message) => message?.role === "system" && typeof message.content === "string").map((message) => message.content.trim()).filter(Boolean).join("\n\n");
   const latestUser = [...messages].reverse().find((message) => message?.role === "user" && typeof message.content === "string")?.content?.trim();
@@ -109,7 +117,10 @@ app.post("/v1/chat/completions", authenticate, async (req, res) => {
   const conversationId = typeof req.body.conversation_id === "string" && req.body.conversation_id.length <= 160 ? req.body.conversation_id : null;
   const model = normalizeModel(req.body.model);
   const stored = conversationId ? threads[conversationId] : null;
-  const chatId = stored?.chatId || null;
+  const storedRequestedModel = stored?.requestedModel || stored?.model;
+  const reusingModel = Boolean(stored?.chatId && storedRequestedModel === model.id);
+  const chatId = reusingModel ? stored.chatId : null;
+  const runtimeModelId = reusingModel ? stored.model : model.id;
   const prompt = buildPrompt(messages, Boolean(chatId));
   const requestId = crypto.randomUUID();
   if (activeGenerations >= MAX_CONCURRENT_GENERATIONS) return res.status(429).json({ error: { message: "The bridge is processing too many conversations.", code: "BRIDGE_BUSY" } });
@@ -119,16 +130,18 @@ app.post("/v1/chat/completions", authenticate, async (req, res) => {
   try {
     const completion = await qwen.createCompletionStream(prompt, {
       chatId,
-      parentId: stored?.parentId || null,
-      modelId: model.id,
+      parentId: reusingModel ? stored?.parentId || null : null,
+      modelId: runtimeModelId,
+      fallbackModelIds: reusingModel ? [] : fallbackModels(model.id),
       reasoningEffort: typeof req.body.reasoning_effort === "string" ? req.body.reasoning_effort : "adaptive",
     });
     if (conversationId) {
       threads[conversationId] = {
         chatId: completion.chatId,
-        parentId: stored?.parentId || null,
+        parentId: reusingModel ? stored?.parentId || null : null,
         url: completion.threadUrl,
-        model: model.id,
+        model: completion.modelId,
+        requestedModel: model.id,
         updatedAt: new Date().toISOString(),
       };
       saveThreads();
@@ -138,12 +151,13 @@ app.post("/v1/chat/completions", authenticate, async (req, res) => {
     const base = {
       id: `chatcmpl-${requestId}`,
       created: Math.floor(Date.now() / 1000),
-      model: model.id,
+      model: completion.modelId,
       provider_thread_url: completion.threadUrl,
       conversation_id: conversationId,
     };
     res.setHeader("X-Qwen-Thread-Url", completion.threadUrl || "");
-    res.setHeader("X-SKMake-Provider-Id", `qwen-bridge/${model.id}`);
+    res.setHeader("X-SKMake-Provider-Id", `qwen-bridge/${completion.modelId}`);
+    res.setHeader("X-Qwen-Requested-Model", model.id);
     const parser = new QwenSseParser();
     const reader = completion.stream.getReader();
     const decoder = new TextDecoder();

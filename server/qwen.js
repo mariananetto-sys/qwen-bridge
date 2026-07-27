@@ -208,9 +208,28 @@ class QwenBridge {
     return chatId;
   }
 
-  async createCompletionStream(message, { chatId = null, parentId = null, modelId = "qwen3.7-plus", reasoningEffort = "adaptive" } = {}) {
+  async createCompatibleChat(modelId, fallbackModelIds = []) {
+    let lastError;
+    for (const candidate of [modelId, ...fallbackModelIds]) {
+      try {
+        return { chatId: await this.createChat(candidate), modelId: candidate };
+      } catch (error) {
+        lastError = error;
+        const code = error instanceof Error ? error.message : "";
+        if (!code.startsWith("QWEN_CREATE_CHAT_4")) throw error;
+        console.warn(`Qwen model ${candidate} is unavailable; trying the next compatible model.`);
+      }
+    }
+    throw lastError || new Error("QWEN_MODEL_UNAVAILABLE");
+  }
+
+  async createCompletionStream(message, { chatId = null, parentId = null, modelId = "qwen3.7-plus", fallbackModelIds = [], reasoningEffort = "adaptive" } = {}) {
     if (!this.isReady && !(await this.refreshReadiness())) throw new Error("BRIDGE_NOT_READY");
-    const resolvedChatId = chatId || await this.createChat(modelId);
+    const created = chatId ? { chatId, modelId } : await this.createCompatibleChat(modelId, fallbackModelIds);
+    const resolvedChatId = created.chatId;
+    const resolvedModelId = created.modelId;
+    const resolvedFallbackIndex = fallbackModelIds.indexOf(resolvedModelId);
+    const remainingFallbacks = resolvedModelId === modelId ? fallbackModelIds : fallbackModelIds.slice(resolvedFallbackIndex + 1);
     const timestamp = Math.floor(Date.now() / 1000);
     const thinkingEnabled = reasoningEffort !== "none";
     const payload = {
@@ -219,7 +238,7 @@ class QwenBridge {
       incremental_output: true,
       chat_id: resolvedChatId,
       chat_mode: "normal",
-      model: modelId,
+      model: resolvedModelId,
       parent_id: parentId,
       messages: [{
         fid: crypto.randomUUID(),
@@ -230,7 +249,7 @@ class QwenBridge {
         user_action: "chat",
         files: [],
         timestamp,
-        models: [modelId],
+        models: [resolvedModelId],
         chat_type: "t2t",
         feature_config: {
           thinking_enabled: thinkingEnabled,
@@ -247,27 +266,44 @@ class QwenBridge {
       }],
       timestamp: timestamp + 1,
     };
-    const result = await browserStreamFetch(
-      this.page,
-      `https://chat.qwen.ai/api/v2/chat/completions?chat_id=${encodeURIComponent(resolvedChatId)}`,
-      {
-        method: "POST",
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
-          "X-Accel-Buffering": "no",
-          "X-Request-Id": crypto.randomUUID(),
-          Timezone: new Date().toString().split(" (")[0],
-          Version: QWEN_WEB_VERSION,
-          Source: "web",
+    let result;
+    try {
+      result = await browserStreamFetch(
+        this.page,
+        `https://chat.qwen.ai/api/v2/chat/completions?chat_id=${encodeURIComponent(resolvedChatId)}`,
+        {
+          method: "POST",
+          headers: {
+            Accept: "application/json",
+            "Content-Type": "application/json",
+            "X-Accel-Buffering": "no",
+            "X-Request-Id": crypto.randomUUID(),
+            Timezone: new Date().toString().split(" (")[0],
+            Version: QWEN_WEB_VERSION,
+            Source: "web",
+          },
+          body: JSON.stringify(payload),
+          timeoutMs: GENERATION_TIMEOUT_MS,
         },
-        body: JSON.stringify(payload),
-        timeoutMs: GENERATION_TIMEOUT_MS,
-      },
-    );
+      );
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "";
+      if (!chatId && code.startsWith("QWEN_UPSTREAM_4") && remainingFallbacks.length) {
+        console.warn(`Qwen model ${resolvedModelId} rejected the completion; trying ${remainingFallbacks[0]}.`);
+        return this.createCompletionStream(message, {
+          chatId: null,
+          parentId: null,
+          modelId: remainingFallbacks[0],
+          fallbackModelIds: remainingFallbacks.slice(1),
+          reasoningEffort,
+        });
+      }
+      throw error;
+    }
     return {
       ...result,
       chatId: resolvedChatId,
+      modelId: resolvedModelId,
       threadUrl: `https://chat.qwen.ai/c/${resolvedChatId}`,
     };
   }
