@@ -288,7 +288,7 @@ class QwenBridge {
       );
     } catch (error) {
       const code = error instanceof Error ? error.message : "";
-      if (!chatId && code.startsWith("QWEN_UPSTREAM_4") && remainingFallbacks.length) {
+      if (!chatId && code.startsWith("QWEN_UPSTREAM_") && remainingFallbacks.length) {
         console.warn(`Qwen model ${resolvedModelId} rejected the completion; trying ${remainingFallbacks[0]}.`);
         return this.createCompletionStream(message, {
           chatId: null,
