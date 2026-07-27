@@ -182,6 +182,10 @@ class QwenBridge {
     const textarea = this.page.locator(SELECTORS.input).first();
     await textarea.fill(message);
     const responseCountBefore = await this.responseBlocks().count();
+    const upstreamResponse = this.page.waitForResponse(
+      (response) => response.request().method() === "POST" && response.url().includes("/api/v2/chat/completions"),
+      { timeout: 30_000 },
+    ).catch(() => null);
     const send = this.page.locator(SELECTORS.send).first();
     if (await send.isVisible({ timeout: 2_000 }).catch(() => false)) await send.click();
     else await textarea.press("Enter");
@@ -202,11 +206,15 @@ class QwenBridge {
       return blocks.length > count;
     }, responseCountBefore, { timeout: 10_000 }).catch(() => undefined);
     await this.page.waitForTimeout(500);
-    const text = await this.extractLastResponse();
+    const captured = await upstreamResponse;
+    const text = captured
+      ? await captured.text().then(parseQwenStreamText).catch(() => "")
+      : "";
+    const finalText = text || await this.extractLastResponse();
     const currentUrl = this.page.url();
     await this.persistSession();
-    if (!text) throw new Error("EMPTY_QWEN_RESPONSE");
-    return { text, threadUrl: isQwenThreadUrl(currentUrl) ? currentUrl : null };
+    if (!finalText) throw new Error("EMPTY_QWEN_RESPONSE");
+    return { text: finalText, threadUrl: isQwenThreadUrl(currentUrl) ? currentUrl : null };
   }
 
   responseBlocks() {
@@ -237,7 +245,22 @@ class QwenBridge {
       if (!block) return "";
       const clone = block.cloneNode(true);
       clone.querySelectorAll("button, svg, .action-buttons").forEach((element) => element.remove());
-      return (clone.innerText || "").replace(/Copy\s*Code/gi, "").replace(/Thinking\s*(completed|\.\.\.)/gi, "").trim();
+      clone.querySelectorAll("pre").forEach((pre) => {
+        const viewLines = Array.from(pre.querySelectorAll(".view-line"))
+          .map((line) => line.textContent || "");
+        const codeNode = pre.querySelector("code");
+        const code = (viewLines.length ? viewLines.join("\n") : codeNode?.textContent || pre.textContent || "").trimEnd();
+        const language = codeNode?.className.match(/language-([\w-]+)/)?.[1] || "";
+        pre.replaceWith(document.createTextNode(`\n\n\`\`\`${language}\n${code}\n\`\`\`\n\n`));
+      });
+      clone.querySelectorAll("br").forEach((element) => element.replaceWith(document.createTextNode("\n")));
+      clone.querySelectorAll("p, h1, h2, h3, h4, li, blockquote").forEach((element) => element.append(document.createTextNode("\n")));
+      return (clone.textContent || "")
+        .replace(/Copy\s*Code/gi, "")
+        .replace(/Thinking\s*(completed|\.\.\.)/gi, "")
+        .replace(/[ \t]+\n/g, "\n")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
     });
   }
 
@@ -254,6 +277,35 @@ class QwenBridge {
     if (this.context) await this.persistSession().catch(() => undefined);
     if (this.browser) await this.browser.close();
   }
+}
+
+export function mergeStreamContent(previous, incoming) {
+  if (!incoming || incoming === "FINISHED" || incoming === previous) return previous;
+  if (!previous || incoming.startsWith(previous)) return incoming;
+  if (previous.endsWith(incoming)) return previous;
+  return previous + incoming;
+}
+
+export function parseQwenStreamText(raw) {
+  let responseId = null;
+  let content = "";
+  for (const line of raw.split(/\r?\n/)) {
+    const value = line.startsWith("data:") ? line.slice(5).trim() : "";
+    if (!value || value === "[DONE]") continue;
+    let chunk;
+    try {
+      chunk = JSON.parse(value);
+    } catch {
+      continue;
+    }
+    const createdId = chunk["response.created"]?.response_id;
+    if (createdId && !responseId) responseId = createdId;
+    if (responseId && chunk.response_id && chunk.response_id !== responseId) continue;
+    const delta = chunk.choices?.[0]?.delta;
+    if (delta?.phase !== "answer" || typeof delta.content !== "string") continue;
+    content = mergeStreamContent(content, delta.content);
+  }
+  return content.trim();
 }
 
 export default new QwenBridge();
