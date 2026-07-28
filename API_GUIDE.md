@@ -1,68 +1,77 @@
-# 🚀 Qwen API Gateway Guide
+# API do ChatGPT Bridge
 
-Este projeto agora funciona como um gateway de API compatível com o padrão da OpenAI. Você pode integrar seu agente local em qualquer outro site ou ferramenta (como LangChain, AutoGPT, ou dashboards customizados).
+## Autenticação
 
-## 🔑 Autenticação
+Todas as rotas privadas exigem:
 
-Todas as requisições devem incluir o cabeçalho `Authorization` com a sua chave API configurada no `.env`.
-
-**Exemplo de Cabeçalho:**
 ```http
-Authorization: Bearer sk-qwen-local-key-12345
+Authorization: Bearer <CHATGPT_BRIDGE_API_KEY>
 ```
 
-## 📡 Endpoints Disponíveis
+## Chat Completions
 
-### 1. Chat Completions
-**URL:** `POST http://localhost:3001/v1/chat/completions`
+```http
+POST /v1/chat/completions
+Content-Type: application/json
+```
 
-**Exemplo de Payload:**
 ```json
 {
-  "model": "qwen3.6-plus",
+  "model": "gpt-5.6-sol",
+  "conversation_id": "id-estavel-do-skmake",
+  "stream": true,
   "messages": [
-    { "role": "user", "content": "Explique o que é uma API em uma frase curta." }
-  ]
-}
-```
-
-**Exemplo de Resposta (OpenAI Style):**
-```json
-{
-  "id": "chatcmpl-x7a2db8s",
-  "object": "chat.completion",
-  "created": 1712543000,
-  "choices": [
     {
-      "message": {
-        "role": "assistant",
-        "content": "Uma API é um conjunto de regras que permite que diferentes softwares se comuniquem e troquem informações."
-      },
-      "finish_reason": "stop"
+      "role": "user",
+      "content": "Explique este Skript."
     }
   ]
 }
 ```
 
-## 🛠️ Como usar com `curl`
+Modelos aceitos:
 
-Execute o comando abaixo no seu terminal para testar a API:
+- `gpt-5.5`
+- `gpt-5.6-sol`
+- `gpt-5.6-sol-thinking`
 
-```bash
-curl http://localhost:3001/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer sk-qwen-local-key-12345" \
-  -d '{
-    "model": "qwen3.6-plus",
-    "messages": [{"role": "user", "content": "Olá, quem é você?"}]
-  }'
+Aliases aceitos:
+
+- `instant`, `flash`
+- `medium`, `medio`, `médio`
+- `high`, `alto`, `pro`, `specialized`, `especializado`
+
+## Conversas
+
+`conversation_id` associa a conversa do consumidor à URL criada no ChatGPT. Quando o modelo muda, o bridge cria uma nova conversa e importa o histórico recebido na solicitação, impedindo que uma conversa antiga seja aberta com o nível errado.
+
+O cabeçalho `X-ChatGPT-Thread-Url` contém a URL persistida.
+
+## Cancelamento
+
+```http
+POST /v1/conversations/:conversationId/cancel
 ```
 
-## ⚠️ Limitações Importantes
+Exemplo:
 
-- **Fila de Processamento (Queue)**: O sistema processa uma requisição por vez (Sequencial). Se você enviar 5 mensagens simultâneas, elas ficarão na fila e serão respondidas uma após a outra.
-- **MVP Stateless**: Esta versão inicial não mantém histórico entre requisições de API (cada mensagem é tratada como um novo chat no backend).
-- **Timeout**: O tempo de resposta pode variar entre 10s e 60s dependendo da velocidade de geração do Qwen.
+```json
+{
+  "stopped": true,
+  "state": "running"
+}
+```
 
----
-*Powered by Playwright & NexusIDE*
+`state` pode ser `running`, `queued` ou `idle`.
+
+## Erros relevantes
+
+| Código | Significado |
+| --- | --- |
+| `CHATGPT_LOGIN_REQUIRED` | O perfil precisa ser conectado novamente. |
+| `MODEL_UNAVAILABLE` | O nível não aparece na conta conectada. |
+| `MODEL_SELECTOR_NOT_FOUND` | A interface mudou e o seletor não foi localizado. |
+| `BRIDGE_QUEUE_FULL` | Há solicitações demais aguardando. |
+| `BRIDGE_QUEUE_TIMEOUT` | A solicitação esperou demais na fila. |
+| `CHATGPT_TIMEOUT` | A geração ultrapassou o limite configurado. |
+| `EMPTY_PROVIDER_RESPONSE` | A interface terminou sem conteúdo extraível. |

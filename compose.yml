@@ -1,7 +1,7 @@
 services:
-  qwen-bridge:
+  chatgpt-bridge:
     build: .
-    container_name: qwen-bridge
+    container_name: chatgpt-bridge
     restart: unless-stopped
     env_file: .env
     environment:
@@ -9,9 +9,10 @@ services:
     ports:
       - "3001:3001"
     volumes:
-      - qwen-state:/data
+      - chatgpt-state:/data
     depends_on:
       - searxng
+    shm_size: "1gb"
 
   searxng:
     image: searxng/searxng:latest
@@ -26,6 +27,5 @@ services:
       - searxng-cache:/var/cache/searxng
 
 volumes:
-  qwen-state:
-    external: true
+  chatgpt-state:
   searxng-cache:

@@ -3,36 +3,312 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Conectar conta Qwen</title>
+    <meta name="robots" content="noindex,nofollow" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23171d19'/%3E%3Cpath d='M9 10h14M9 16h14M9 22h8' stroke='%2378b98a' stroke-width='2'/%3E%3C/svg%3E" />
+    <title>Conectar ChatGPT Bridge</title>
     <style>
-      :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #101512; color: #edf2ed; }
-      body { max-width: 1120px; margin: 0 auto; padding: 24px; }
-      h1 { margin: 0 0 8px; font-size: 24px; }
-      p { color: #a7b1a8; } input, button { font: inherit; }
-      #key { box-sizing: border-box; width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #405046; background: #182019; color: inherit; }
-      #screen { display: block; width: 100%; margin-top: 18px; border: 1px solid #405046; border-radius: 10px; cursor: crosshair; }
-      .row { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; } button { padding: 9px 13px; border: 0; border-radius: 7px; background: #4b9b69; color: #07110a; cursor: pointer; } #typing { flex: 1; min-width: 260px; padding: 9px; border-radius: 7px; border: 1px solid #405046; background: #182019; color: inherit; }
-      #status { font: 13px ui-monospace, monospace; color: #99d7aa; }
+      :root {
+        color-scheme: dark;
+        font-family: Geist, "Segoe UI", sans-serif;
+        background: #101411;
+        color: #edf2ed;
+        --surface: #171d19;
+        --surface-strong: #1c241f;
+        --border: #303b34;
+        --muted: #9aa69e;
+        --accent: #67ad7c;
+        --accent-strong: #8fc39d;
+        --danger: #e58b86;
+      }
+
+      * { box-sizing: border-box; }
+      body { margin: 0; min-height: 100dvh; background: #101411; }
+      button, input { font: inherit; }
+      button { -webkit-tap-highlight-color: transparent; }
+
+      .shell {
+        width: min(1480px, 100%);
+        margin: 0 auto;
+        padding: clamp(20px, 4vw, 56px);
+      }
+
+      .masthead {
+        display: grid;
+        grid-template-columns: minmax(0, 1.35fr) minmax(260px, .65fr);
+        gap: clamp(28px, 6vw, 96px);
+        align-items: end;
+        padding-bottom: 28px;
+        border-bottom: 1px solid var(--border);
+      }
+
+      .eyebrow {
+        margin: 0 0 12px;
+        color: var(--accent-strong);
+        font: 600 11px/1.2 "Geist Mono", ui-monospace, monospace;
+        letter-spacing: .18em;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        max-width: 720px;
+        margin: 0;
+        font-size: clamp(34px, 5vw, 68px);
+        line-height: .98;
+        letter-spacing: -.055em;
+      }
+
+      .lede {
+        max-width: 52ch;
+        margin: 0;
+        color: var(--muted);
+        font-size: 15px;
+        line-height: 1.7;
+      }
+
+      .controls {
+        display: grid;
+        grid-template-columns: minmax(260px, 1fr) auto;
+        gap: 14px;
+        align-items: end;
+        padding: 24px 0;
+      }
+
+      .field { display: grid; gap: 8px; }
+      label {
+        color: #cfd7d1;
+        font-size: 13px;
+        font-weight: 600;
+      }
+
+      input {
+        width: 100%;
+        min-height: 46px;
+        border: 1px solid var(--border);
+        border-radius: 11px;
+        outline: none;
+        background: var(--surface);
+        color: inherit;
+        padding: 0 14px;
+        transition: border-color .2s ease, background .2s ease;
+      }
+
+      input:focus {
+        border-color: var(--accent);
+        background: var(--surface-strong);
+      }
+
+      .button-row { display: flex; flex-wrap: wrap; gap: 8px; }
+      button {
+        min-height: 42px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: var(--surface);
+        color: #dbe3dd;
+        padding: 0 14px;
+        cursor: pointer;
+        transition: transform .2s cubic-bezier(.16, 1, .3, 1), border-color .2s ease, background .2s ease;
+      }
+
+      button:hover { border-color: #536158; background: var(--surface-strong); }
+      button:active { transform: translateY(1px) scale(.985); }
+      button.primary {
+        border-color: transparent;
+        background: var(--accent);
+        color: #0d1710;
+        font-weight: 700;
+      }
+
+      button:focus-visible, input:focus-visible {
+        outline: 2px solid var(--accent-strong);
+        outline-offset: 3px;
+      }
+
+      .browser {
+        overflow: hidden;
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        background: #0b0e0c;
+        box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+      }
+
+      .browser-bar {
+        min-height: 50px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 0 16px;
+        border-bottom: 1px solid var(--border);
+        background: var(--surface);
+      }
+
+      #status {
+        color: var(--muted);
+        font: 12px/1.4 "Geist Mono", ui-monospace, monospace;
+      }
+      #status.ready { color: var(--accent-strong); }
+      #status.error { color: var(--danger); }
+
+      #screen {
+        display: block;
+        width: 100%;
+        min-height: 280px;
+        background: #0b0e0c;
+        cursor: crosshair;
+      }
+
+      .remote-input {
+        display: grid;
+        grid-template-columns: minmax(240px, 1fr) auto;
+        gap: 10px;
+        padding: 14px;
+        border-top: 1px solid var(--border);
+        background: var(--surface);
+      }
+
+      .note {
+        margin: 16px 0 0;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.6;
+      }
+
+      @media (max-width: 760px) {
+        .shell { padding: 20px 14px 32px; }
+        .masthead, .controls, .remote-input { grid-template-columns: 1fr; }
+        .masthead { align-items: start; }
+        .controls .button-row { justify-content: flex-start; }
+        #screen { min-height: 190px; }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }
+      }
     </style>
   </head>
   <body>
-    <h1>Conectar sua conta Qwen</h1>
-    <p>Digite a chave do bridge. Depois, use a tela abaixo como um navegador: clique, digite e confirme o login. Esta tela não armazena a chave.</p>
-    <input id="key" type="password" autocomplete="off" placeholder="QWEN_API_KEY" />
-    <div class="row"><input id="typing" type="password" autocomplete="off" placeholder="Digite aqui o texto para a tela do Qwen" /><button id="send-text">Enviar texto</button><button id="refresh">Atualizar tela</button><button id="enter">Enter</button><button id="tab">Tab</button><span id="status"></span></div>
-    <img id="screen" alt="Tela de login do Qwen" />
+    <main class="shell">
+      <header class="masthead">
+        <div>
+          <p class="eyebrow">ChatGPT Bridge · conexão inicial</p>
+          <h1>Conecte a conta no Chrome da máquina.</h1>
+        </div>
+        <p class="lede">
+          Digite a chave privada do bridge e controle a tela abaixo como um navegador.
+          Faça o login manualmente. A senha não é guardada por esta página.
+        </p>
+      </header>
+
+      <section class="controls" aria-label="Controles do bridge">
+        <div class="field">
+          <label for="key">Chave privada do bridge</label>
+          <input id="key" name="bridge-key" type="password" autocomplete="off" placeholder="CHATGPT_BRIDGE_API_KEY" />
+        </div>
+        <div class="button-row">
+          <button id="refresh" class="primary" type="button">Conectar e atualizar</button>
+          <button id="enter" type="button">Enter</button>
+          <button id="tab" type="button">Tab</button>
+          <button id="escape" type="button">Escape</button>
+        </div>
+      </section>
+
+      <section class="browser" aria-label="Chrome remoto">
+        <div class="browser-bar">
+          <span>Chrome remoto</span>
+          <span id="status" role="status">Informe a chave para começar.</span>
+        </div>
+        <img id="screen" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" alt="Tela atual do ChatGPT no Chrome da máquina" />
+        <div class="remote-input">
+          <div class="field">
+            <label for="typing">Texto para a tela do ChatGPT</label>
+            <input id="typing" name="remote-text" type="password" autocomplete="off" placeholder="Digite e envie para o campo em foco" />
+          </div>
+          <button id="send-text" class="primary" type="button">Enviar texto</button>
+        </div>
+      </section>
+
+      <p class="note">
+        Use HTTPS e mantenha esta rota protegida. O perfil autenticado permanece apenas no volume da máquina.
+        Nunca envie o diretório do perfil, cookies ou capturas de sessão para o repositório.
+      </p>
+    </main>
+
     <script>
-      const key = document.querySelector('#key'); const typing = document.querySelector('#typing'); const screen = document.querySelector('#screen'); const status = document.querySelector('#status');
-      const headers = () => ({ Authorization: `Bearer ${key.value}`, 'Content-Type': 'application/json' });
-      async function request(path, body) { const r = await fetch(path, { method: body ? 'POST' : 'GET', headers: headers(), body: body ? JSON.stringify(body) : undefined }); if (!r.ok) throw new Error(await r.text()); return r; }
-      async function update() { try { const s = await (await request('/setup/status')).json(); status.textContent = s.ready ? 'Conectado. Pode fechar esta tela.' : `Aguardando login: ${s.title || s.url}`; const r = await request('/setup/screenshot'); screen.src = URL.createObjectURL(await r.blob()); } catch (e) { status.textContent = 'Erro: confira a chave.'; } }
-      screen.addEventListener('click', async (event) => { const r = screen.getBoundingClientRect(); await request('/setup/click', { x: Math.round((event.clientX-r.left)*1280/r.width), y: Math.round((event.clientY-r.top)*800/r.height) }); await update(); });
-      key.addEventListener('keydown', async (event) => { if (event.key === 'Enter') update(); });
-      document.querySelector('#send-text').onclick = async () => { if (!typing.value) return; await request('/setup/type', { text: typing.value }); typing.value = ''; await update(); };
-      typing.addEventListener('keydown', (event) => { if (event.key === 'Enter') document.querySelector('#send-text').click(); });
-      document.querySelector('#refresh').onclick = update;
-      document.querySelector('#enter').onclick = async () => { await request('/setup/press', { key: 'Enter' }); await update(); };
-      document.querySelector('#tab').onclick = async () => { await request('/setup/press', { key: 'Tab' }); await update(); };
+      const key = document.querySelector("#key");
+      const typing = document.querySelector("#typing");
+      const screen = document.querySelector("#screen");
+      const status = document.querySelector("#status");
+      let screenUrl = null;
+
+      const headers = () => ({
+        Authorization: `Bearer ${key.value}`,
+        "Content-Type": "application/json",
+      });
+
+      async function request(path, body) {
+        const response = await fetch(path, {
+          method: body ? "POST" : "GET",
+          headers: headers(),
+          body: body ? JSON.stringify(body) : undefined,
+        });
+        if (!response.ok) throw new Error(await response.text());
+        return response;
+      }
+
+      async function update() {
+        if (!key.value) {
+          status.className = "error";
+          status.textContent = "Informe a chave privada.";
+          return;
+        }
+        status.className = "";
+        status.textContent = "Atualizando a tela…";
+        try {
+          const state = await (await request("/setup/status")).json();
+          status.className = state.ready ? "ready" : "";
+          status.textContent = state.ready
+            ? "Conta conectada. O bridge está pronto."
+            : `Aguardando login · ${state.title || state.url || "Chrome aberto"}`;
+          const response = await request("/setup/screenshot");
+          if (screenUrl) URL.revokeObjectURL(screenUrl);
+          screenUrl = URL.createObjectURL(await response.blob());
+          screen.src = screenUrl;
+        } catch {
+          status.className = "error";
+          status.textContent = "Não foi possível acessar o bridge. Confira a chave.";
+        }
+      }
+
+      async function press(keyName) {
+        await request("/setup/press", { key: keyName });
+        await update();
+      }
+
+      screen.addEventListener("click", async (event) => {
+        const bounds = screen.getBoundingClientRect();
+        await request("/setup/click", {
+          x: Math.round((event.clientX - bounds.left) * 1440 / bounds.width),
+          y: Math.round((event.clientY - bounds.top) * 900 / bounds.height),
+        });
+        await update();
+      });
+
+      document.querySelector("#refresh").addEventListener("click", update);
+      document.querySelector("#enter").addEventListener("click", () => press("Enter"));
+      document.querySelector("#tab").addEventListener("click", () => press("Tab"));
+      document.querySelector("#escape").addEventListener("click", () => press("Escape"));
+      document.querySelector("#send-text").addEventListener("click", async () => {
+        if (!typing.value) return;
+        await request("/setup/type", { text: typing.value });
+        typing.value = "";
+        await update();
+      });
+      key.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") update();
+      });
+      typing.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") document.querySelector("#send-text").click();
+      });
     </script>
   </body>
 </html>

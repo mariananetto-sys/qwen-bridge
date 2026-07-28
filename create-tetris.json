@@ -1,9 +1,0 @@
-{
-  "model": "qwen",
-  "messages": [
-    {
-      "role": "user",
-      "content": "Crie um arquivo HTML com um jogo de Tetris simples. O arquivo deve se chamar tetris.html e incluir todo o CSS e JavaScript embutido. Deve ser totalmente funcional e ter cores vibrantes. Use a ferramenta write_file para criar o arquivo."
-    }
-  ]
-}

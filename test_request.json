@@ -1,9 +1,0 @@
-{
-  "model": "qwen",
-  "messages": [
-    {
-      "role": "user",
-      "content": "Crie um arquivo HTML chamado teste.html com um simples conteúdo de teste. Use a ferramenta write_file."
-    }
-  ]
-}
