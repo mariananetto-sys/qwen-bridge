@@ -420,38 +420,32 @@ function extractExpandedReasoning(root) {
   const toggleBottom = toggle.getBoundingClientRect().bottom;
   const controlledId = toggle.getAttribute("aria-controls");
   const controlled = controlledId ? document.getElementById(controlledId) : null;
-  const region = controlled instanceof HTMLElement ? controlled : turn;
   const searchPattern = /\bSearched\s+\d+\s+websites?\b|\bPesquisou\s+\d+\s+sites?\b/i;
-  const searchTop = [...region.querySelectorAll("button, [role='button'], div, span")]
-    .filter((element) => visible(element) && searchPattern.test(normalizedText(element)))
-    .map((element) => element.getBoundingClientRect().top)
-    .filter((top) => top > toggleBottom + 2)
-    .sort((a, b) => a - b)[0];
-  const finalTop = controlled ? Number.POSITIVE_INFINITY : searchTop ?? [...turn.querySelectorAll(".markdown, .prose")]
+  const finalTop = [...turn.querySelectorAll(".markdown, .prose")]
     .filter(visible)
     .map((element) => element.getBoundingClientRect().top)
     .filter((top) => top > toggleBottom + 2)
     .sort((a, b) => a - b)[0] ?? Number.POSITIVE_INFINITY;
-  const values = [...region.querySelectorAll("p, li, [role='status'], button, [role='button'], div, span")]
+  const selector = "p, li, [role='status'], button, [role='button'], div, span";
+  const controlledElements = controlled instanceof HTMLElement
+    ? [controlled, ...controlled.querySelectorAll(selector)]
+    : [];
+  const values = [...new Set([...turn.querySelectorAll(selector), ...controlledElements])]
     .filter((element) => {
       if (!visible(element)) return false;
       const text = normalizedText(element);
       if (!text || text.length > 8_000 || searchPattern.test(text)) return false;
-      if (
-        ["div", "span"].includes(element.tagName.toLowerCase())
-        && !controlled
-      ) return false;
-      if (
-        controlled
-        && ["div", "span"].includes(element.tagName.toLowerCase())
-        && [...element.children].some((child) => normalizedText(child))
-      ) return false;
+      if (element === toggle || element.contains(toggle)) return false;
+      const tag = element.tagName.toLowerCase();
+      if (["div", "span"].includes(tag) && [...element.children].some((child) => normalizedText(child))) return false;
       if ([...element.children].some((child) =>
         visible(child) && normalizedText(child) === text)) return false;
-      if (controlled) return true;
+      if (controlled instanceof HTMLElement && controlled.contains(element)) return true;
       const box = element.getBoundingClientRect();
-      return box.top > toggleBottom + 2 && box.bottom < finalTop - 2;
+      return box.bottom < finalTop - 2;
     })
+    .sort((left, right) =>
+      left.getBoundingClientRect().top - right.getBoundingClientRect().top)
     .map(normalizedText)
     .filter((value) =>
       value
