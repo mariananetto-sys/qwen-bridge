@@ -249,6 +249,7 @@ function publicErrorMessage(code) {
     CHATGPT_GENERATION_BUSY: "O Chrome ainda está concluindo outra resposta.",
     CHATGPT_INTERFACE_TIMEOUT: "A interface do ChatGPT demorou demais para ficar pronta.",
     CHATGPT_NAVIGATION_TIMEOUT: "O ChatGPT demorou demais para abrir a conversa.",
+    CHATGPT_SUBMISSION_FAILED: "O ChatGPT não confirmou o envio da mensagem.",
     CHATGPT_TIMEOUT: "O ChatGPT demorou além do limite configurado.",
     BRIDGE_QUEUE_FULL: "A fila do bridge está cheia.",
     BRIDGE_QUEUE_TIMEOUT: "A solicitação aguardou demais na fila.",

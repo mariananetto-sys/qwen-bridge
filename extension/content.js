@@ -16,6 +16,7 @@ const STOP_SELECTOR = [
   'button[aria-label*="Stop"]',
 ].join(",");
 const ASSISTANT_SELECTOR = 'main [data-message-author-role="assistant"]';
+const USER_SELECTOR = 'main [data-message-author-role="user"]';
 const MODEL_LEVELS = {
   "gpt-5.5": ["Instantâneo", "Instant"],
   "gpt-5.6-sol": ["Médio", "Medium"],
@@ -151,6 +152,14 @@ function fillPrompt(input, prompt) {
 
 function assistantBlocks() {
   return [...document.querySelectorAll(ASSISTANT_SELECTOR)];
+}
+
+function userBlocks() {
+  return [...document.querySelectorAll(USER_SELECTOR)];
+}
+
+function isThreadPage() {
+  return /^\/c\/[a-z0-9-]+\/?$/i.test(location.pathname);
 }
 
 function safeExternalUrl(value) {
@@ -324,7 +333,7 @@ function extractMarkdown(root) {
   return markdownRoot ? normalize(walk(markdownRoot)) : "";
 }
 
-async function monitorGeneration(requestId, responseCountBefore, timeoutMs, webBaseline) {
+async function monitorGeneration(requestId, assistantBaseline, timeoutMs, webBaseline) {
   const deadline = Date.now() + Math.max(30_000, Number(timeoutMs || 480_000));
   let previous = "";
   let stopSeen = false;
@@ -345,10 +354,8 @@ async function monitorGeneration(requestId, responseCountBefore, timeoutMs, webB
     idleChecks = stopSeen && !stopVisible ? idleChecks + 1 : 0;
 
     const blocks = assistantBlocks();
-    const currentBlock = blocks.length > responseCountBefore ? blocks.at(-1) : null;
-    const current = blocks.length > responseCountBefore
-      ? extractMarkdown(currentBlock)
-      : "";
+    const currentBlock = blocks.findLast((block) => !assistantBaseline.has(block)) || null;
+    const current = currentBlock ? extractMarkdown(currentBlock) : "";
     if (current && current !== previous) {
       previous = current;
       stableChecks = 0;
@@ -399,29 +406,52 @@ async function monitorGeneration(requestId, responseCountBefore, timeoutMs, webB
 
 async function startGeneration(message) {
   if (activeGeneration) throw new Error("CHATGPT_GENERATION_BUSY");
-  const input = await waitFor(findInput, 30_000);
   await switchModel(message.modelId);
-
-  const responseCountBefore = assistantBlocks().length;
+  let input = await waitFor(findInput, 30_000);
+  const assistantBaseline = new Set(assistantBlocks());
+  const userBaseline = new Set(userBlocks());
+  const threadBefore = isThreadPage() ? location.pathname : null;
   const webBaseline = extractWebActivity(document.querySelector("main"));
-  fillPrompt(input, message.prompt);
-  const send = await waitFor(() => {
-    const button = document.querySelector(SEND_SELECTOR);
-    return visible(button) && !button.disabled ? button : null;
-  }, 5_000).catch(() => null);
-
   activeGeneration = { requestId: message.requestId };
-  if (send) {
-    send.click();
-  } else {
-    input.dispatchEvent(new KeyboardEvent("keydown", {
-      key: "Enter",
-      code: "Enter",
-      bubbles: true,
-      cancelable: true,
-    }));
+
+  const submit = async () => {
+    fillPrompt(input, message.prompt);
+    const send = await waitFor(() => {
+      const button = document.querySelector(SEND_SELECTOR);
+      return visible(button) && !button.disabled ? button : null;
+    }, 5_000).catch(() => null);
+    if (send) send.click();
+    else {
+      input.dispatchEvent(new KeyboardEvent("keydown", {
+        key: "Enter",
+        code: "Enter",
+        bubbles: true,
+        cancelable: true,
+      }));
+    }
+  };
+
+  const submitted = () => {
+    const createdThread = isThreadPage() && location.pathname !== threadBefore;
+    const addedUserMessage = userBlocks().some((block) => !userBaseline.has(block));
+    return createdThread || addedUserMessage || visible(document.querySelector(STOP_SELECTOR));
+  };
+
+  try {
+    await submit();
+    let accepted = await waitFor(() => submitted(), 8_000, 120).then(() => true).catch(() => false);
+    if (!accepted) {
+      input = await waitFor(findInput, 5_000);
+      await submit();
+      accepted = await waitFor(() => submitted(), 8_000, 120).then(() => true).catch(() => false);
+    }
+    if (!accepted) throw new Error("CHATGPT_SUBMISSION_FAILED");
+  } catch (error) {
+    activeGeneration = null;
+    throw error;
   }
-  void monitorGeneration(message.requestId, responseCountBefore, message.timeoutMs, webBaseline);
+
+  void monitorGeneration(message.requestId, assistantBaseline, message.timeoutMs, webBaseline);
 }
 
 function cancelGeneration(requestId) {
