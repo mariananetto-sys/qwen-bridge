@@ -191,6 +191,15 @@ app.post("/v1/chat/completions", authenticate, async (req, res) => {
       }
       if (done) break;
     }
+    if (!content.trim() && !reasoning.trim()) {
+      console.error(JSON.stringify({ event: "qwen_bridge.empty_response", requestId, conversationId, model: completion.modelId }));
+      if (stream) {
+        res.write(`data: ${JSON.stringify({ error: { message: "Qwen returned an empty response", code: "EMPTY_PROVIDER_RESPONSE" } })}\n\n`);
+        res.write("data: [DONE]\n\n");
+        return res.end();
+      }
+      return res.status(502).json({ error: { message: "Qwen returned an empty response", code: "EMPTY_PROVIDER_RESPONSE" } });
+    }
     if (stream) {
       res.write(openAiChunk(base, {}, "stop"));
       res.write("data: [DONE]\n\n");
