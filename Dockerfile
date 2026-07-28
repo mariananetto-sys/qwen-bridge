@@ -8,8 +8,10 @@ RUN apt-get update \
       wget \
       xdotool \
       xvfb \
+    && rm -f /var/cache/apt/archives/*.deb \
     && wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb \
-    && apt-get install -y ./google-chrome-stable_current_amd64.deb \
+    && apt-get install -y --no-install-recommends ./google-chrome-stable_current_amd64.deb \
+    && apt-get clean \
     && rm -f google-chrome-stable_current_amd64.deb \
     && rm -rf /var/lib/apt/lists/*
 
