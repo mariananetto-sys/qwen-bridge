@@ -15,6 +15,7 @@ const STOP_SELECTOR = [
   'button[aria-label*="Parar"]',
   'button[aria-label*="Stop"]',
 ].join(",");
+const ATTACHMENT_TRIGGER_PATTERN = /attach|upload|add (?:photos?|files?)|anexar|carregar|adicionar (?:fotos?|arquivos?)/i;
 const ASSISTANT_SELECTOR = 'main [data-message-author-role="assistant"]';
 const USER_SELECTOR = 'main [data-message-author-role="user"]';
 const MODEL_LEVELS = {
@@ -221,6 +222,58 @@ function fillPrompt(input, prompt) {
     inputType: "insertText",
     data: prompt,
   }));
+}
+
+function decodeBase64(value) {
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
+}
+
+function findAttachmentInput() {
+  return [...document.querySelectorAll('input[type="file"]')]
+    .find((input) => input instanceof HTMLInputElement && !input.disabled) || null;
+}
+
+function findAttachmentTrigger() {
+  return [...document.querySelectorAll("button, [role='button']")]
+    .filter((element) => {
+      const label = `${element.getAttribute("aria-label") || ""} ${element.getAttribute("title") || ""} ${normalizedText(element)}`;
+      return visible(element) && ATTACHMENT_TRIGGER_PATTERN.test(label);
+    })
+    .at(-1) || null;
+}
+
+async function attachFiles(attachments) {
+  if (!Array.isArray(attachments) || !attachments.length) return;
+  let input = findAttachmentInput();
+  if (!input) {
+    const trigger = findAttachmentTrigger();
+    if (trigger) activateElement(trigger);
+    input = await waitFor(findAttachmentInput, 5_000, 100, "CHATGPT_ATTACHMENT_INPUT_NOT_FOUND");
+  }
+  if (!(input instanceof HTMLInputElement)) throw new Error("CHATGPT_ATTACHMENT_INPUT_NOT_FOUND");
+
+  const transfer = new DataTransfer();
+  for (const attachment of attachments) {
+    if (
+      !attachment
+      || typeof attachment.name !== "string"
+      || typeof attachment.dataBase64 !== "string"
+    ) throw new Error("CHATGPT_ATTACHMENT_INVALID");
+    transfer.items.add(new File(
+      [decodeBase64(attachment.dataBase64)],
+      attachment.name,
+      { type: attachment.mimeType || "application/octet-stream" },
+    ));
+  }
+  input.files = transfer.files;
+  input.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
+  input.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
+  await new Promise((resolve) => setTimeout(resolve, 700));
 }
 
 function assistantBlocks() {
@@ -742,6 +795,7 @@ async function startGeneration(message) {
 
   let submittedUser;
   try {
+    await attachFiles(message.attachments);
     await submit();
     submittedUser = await waitFor(submitted, 8_000, 120).catch(() => null);
     if (!submittedUser) {

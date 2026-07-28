@@ -126,6 +126,7 @@ async function handleGenerate(command) {
       action: "generate",
       requestId: command.requestId,
       prompt: command.prompt,
+      attachments: command.attachments,
       modelId: command.modelId,
       timeoutMs: command.timeoutMs,
     });

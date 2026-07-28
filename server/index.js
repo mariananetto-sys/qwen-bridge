@@ -38,7 +38,25 @@ app.use(cors({
     "X-SKMake-Provider-Id",
   ],
 }));
-app.use(express.json({ limit: process.env.MAX_BODY_SIZE || "2mb" }));
+app.use(express.json({ limit: process.env.MAX_BODY_SIZE || "35mb" }));
+
+function normalizeAttachments(value) {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > 8) throw new Error("INVALID_ATTACHMENTS");
+  let totalBytes = 0;
+  return value.map((item) => {
+    const name = typeof item?.name === "string" ? item.name.trim().slice(0, 240) : "";
+    const mimeType = typeof item?.mime_type === "string"
+      ? item.mime_type.trim().slice(0, 160)
+      : "application/octet-stream";
+    const dataBase64 = typeof item?.data_base64 === "string" ? item.data_base64 : "";
+    if (!name || !/^[A-Za-z0-9+/]*={0,2}$/.test(dataBase64)) throw new Error("INVALID_ATTACHMENTS");
+    const size = Buffer.byteLength(dataBase64, "base64");
+    totalBytes += size;
+    if (size > 10_000_000 || totalBytes > 25_000_000) throw new Error("ATTACHMENTS_TOO_LARGE");
+    return { name, mimeType, dataBase64 };
+  });
+}
 
 function loadThreads() {
   try {
@@ -227,7 +245,8 @@ let activeGenerations = 0;
 
 function errorStatus(error) {
   const code = error instanceof Error ? error.message : "BRIDGE_ERROR";
-  if (code === "MESSAGES_REQUIRED") return 400;
+  if (code === "MESSAGES_REQUIRED" || code === "INVALID_ATTACHMENTS") return 400;
+  if (code === "ATTACHMENTS_TOO_LARGE") return 413;
   if (code === "MODEL_UNAVAILABLE") return 422;
   if (code === "BRIDGE_QUEUE_FULL" || code === "BRIDGE_QUEUE_TIMEOUT") return 429;
   if (
@@ -236,7 +255,9 @@ function errorStatus(error) {
     || code === "MODEL_SELECTOR_NOT_FOUND"
     || code === "MODEL_SELECTION_FAILED"
     || code === "CHATGPT_INPUT_NOT_FOUND"
+    || code === "CHATGPT_ATTACHMENT_INPUT_NOT_FOUND"
   ) return 503;
+  if (code === "CHATGPT_ATTACHMENT_INVALID") return 400;
   if (code === "CHATGPT_GENERATION_BUSY") return 409;
   if (code === "CHATGPT_TIMEOUT") return 504;
   if (code === "GENERATION_CANCELLED") return 499;
@@ -246,10 +267,14 @@ function errorStatus(error) {
 function publicErrorMessage(code) {
   const messages = {
     MESSAGES_REQUIRED: "Envie pelo menos uma mensagem do usuário.",
+    INVALID_ATTACHMENTS: "Um ou mais anexos são inválidos.",
+    ATTACHMENTS_TOO_LARGE: "Os anexos ultrapassam o limite técnico seguro.",
     MODEL_UNAVAILABLE: "Este nível não está disponível na conta conectada.",
     MODEL_SELECTOR_NOT_FOUND: "O seletor de nível do ChatGPT mudou ou não está disponível.",
     MODEL_SELECTION_FAILED: "O ChatGPT não confirmou a troca de nível.",
     CHATGPT_INPUT_NOT_FOUND: "O campo de mensagem do ChatGPT não foi encontrado.",
+    CHATGPT_ATTACHMENT_INPUT_NOT_FOUND: "O campo de anexos do ChatGPT não foi encontrado.",
+    CHATGPT_ATTACHMENT_INVALID: "O ChatGPT não conseguiu preparar um dos anexos.",
     CHATGPT_LOGIN_REQUIRED: "A conta do ChatGPT precisa ser conectada novamente.",
     CHATGPT_EXTENSION_DISCONNECTED: "A extensão local do Chrome ainda não se conectou ao bridge.",
     CHATGPT_GENERATION_BUSY: "O Chrome ainda está concluindo outra resposta.",
@@ -289,6 +314,7 @@ app.post("/v1/chat/completions", authenticate, async (req, res) => {
   let release = null;
 
   try {
+    const attachments = normalizeAttachments(req.body.attachments);
     const model = normalizeModel(req.body.model);
     const stored = conversationId ? threads[conversationId] : null;
     const reuseThread = Boolean(stored?.url && stored?.model === model.id);
@@ -300,6 +326,7 @@ app.post("/v1/chat/completions", authenticate, async (req, res) => {
     const completion = await chatgpt.createCompletionStream(prompt, {
       threadUrl: reuseThread ? stored.url : null,
       modelId: model.id,
+      attachments,
     });
 
     if (conversationId) {

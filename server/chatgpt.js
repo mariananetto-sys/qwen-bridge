@@ -438,7 +438,7 @@ export class ChatGptBridge {
     if (!this.isReady) throw new Error("CHATGPT_LOGIN_REQUIRED");
   }
 
-  async createCompletionStream(prompt, { threadUrl = null, modelId = "gpt-5.5" } = {}) {
+  async createCompletionStream(prompt, { threadUrl = null, modelId = "gpt-5.5", attachments = [] } = {}) {
     await this.ensureReady();
     const requestId = crypto.randomUUID();
     const encoder = new TextEncoder();
@@ -477,6 +477,7 @@ export class ChatGptBridge {
         action: "generate",
         requestId,
         prompt,
+        attachments,
         threadUrl,
         modelId,
         timeoutMs: GENERATION_TIMEOUT_MS,
