@@ -198,6 +198,62 @@ function extractWebActivity(root) {
   return { markers: markerNodes.length, sources };
 }
 
+function setNativeInputValue(input, value) {
+  const prototype = input instanceof HTMLTextAreaElement
+    ? HTMLTextAreaElement.prototype
+    : HTMLInputElement.prototype;
+  const setter = Object.getOwnPropertyDescriptor(prototype, "value")?.set;
+  setter?.call(input, value);
+  input.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: value }));
+  input.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+async function ensureSkmakeConversationTitle() {
+  if (!/^\/c\/[a-z0-9-]+\/?$/i.test(location.pathname)) return;
+  const link = await waitFor(() => [...document.querySelectorAll('a[href*="/c/"]')].find((candidate) => {
+    try {
+      return new URL(candidate.getAttribute("href") || "", location.href).pathname.replace(/\/$/, "")
+        === location.pathname.replace(/\/$/, "");
+    } catch {
+      return false;
+    }
+  }) || null, 5_000).catch(() => null);
+  if (!(link instanceof HTMLElement)) return;
+
+  const currentTitle = normalizedText(link).replace(/\s*\[SKMAKE\]\s*$/i, "").trim();
+  if (!currentTitle || /\[SKMAKE\]\s*$/i.test(normalizedText(link))) return;
+  const container = link.closest("li") || link.parentElement?.parentElement || link.parentElement;
+  if (!(container instanceof HTMLElement)) return;
+  container.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+
+  const menuButton = await waitFor(() => [...container.querySelectorAll("button")].find((button) => {
+    const label = `${button.getAttribute("aria-label") || ""} ${button.getAttribute("title") || ""}`;
+    return /option|menu|more|opç|mais/i.test(label);
+  }) || null, 2_500).catch(() => null);
+  if (!(menuButton instanceof HTMLElement)) return;
+  menuButton.click();
+
+  const renameButton = await waitFor(() => [...document.querySelectorAll('button, [role="menuitem"]')].find((element) =>
+    visible(element) && /\b(rename|renomear)\b/i.test(normalizedText(element))) || null, 2_500).catch(() => null);
+  if (!(renameButton instanceof HTMLElement)) return;
+  renameButton.click();
+
+  const titleInput = await waitFor(() => {
+    const candidates = [...document.querySelectorAll('input[type="text"], input:not([type])')].filter(visible);
+    return candidates.find((input) => /rename|renomear|title|título/i.test(`${input.getAttribute("aria-label") || ""} ${input.getAttribute("placeholder") || ""}`))
+      || candidates.at(-1)
+      || null;
+  }, 2_500).catch(() => null);
+  if (!(titleInput instanceof HTMLInputElement)) return;
+  setNativeInputValue(titleInput, `${currentTitle} [SKMAKE]`);
+  titleInput.dispatchEvent(new KeyboardEvent("keydown", {
+    key: "Enter",
+    code: "Enter",
+    bubbles: true,
+    cancelable: true,
+  }));
+}
+
 function extractMarkdown(root) {
   const normalize = (value) => value
     .replace(/\u00a0/g, " ")
@@ -325,6 +381,7 @@ async function monitorGeneration(requestId, responseCountBefore, timeoutMs, webB
       ? !stopVisible && (stableChecks >= 3 || idleChecks >= 8)
       : current && stableChecks >= 8 && Date.now() - lastChangeAt >= 1_500;
     if (finished) {
+      void ensureSkmakeConversationTitle().catch(() => undefined);
       activeGeneration = null;
       generationEvent(requestId, "done");
       reportStatus();

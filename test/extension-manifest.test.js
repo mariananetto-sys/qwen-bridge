@@ -8,6 +8,10 @@ const testDirectory = path.dirname(fileURLToPath(import.meta.url));
 const manifest = JSON.parse(
   fs.readFileSync(path.resolve(testDirectory, "..", "extension", "manifest.json"), "utf8"),
 );
+const contentScript = fs.readFileSync(
+  path.resolve(testDirectory, "..", "extension", "content.js"),
+  "utf8",
+);
 
 test("Chrome extension is MV3 and scoped only to ChatGPT", () => {
   assert.equal(manifest.manifest_version, 3);
@@ -20,4 +24,9 @@ test("Chrome extension injects the bridge content script only on ChatGPT", () =>
   assert.equal(manifest.content_scripts.length, 1);
   assert.deepEqual(manifest.content_scripts[0].matches, ["https://chatgpt.com/*"]);
   assert.deepEqual(manifest.content_scripts[0].js, ["content.js"]);
+});
+
+test("SKMake conversations receive an identifying title suffix", () => {
+  assert.match(contentScript, /ensureSkmakeConversationTitle/);
+  assert.match(contentScript, /`\$\{currentTitle\} \[SKMAKE\]`/);
 });
