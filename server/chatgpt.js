@@ -92,6 +92,17 @@ export function incrementalDelta(previous, incoming) {
   return "";
 }
 
+export function runtimeExtensionVersion(date = new Date()) {
+  const startOfYear = Date.UTC(date.getUTCFullYear(), 0, 1);
+  const dayOfYear = Math.floor((date.getTime() - startOfYear) / 86_400_000) + 1;
+  const twoSecondSlot = Math.floor((
+    date.getUTCHours() * 3_600
+    + date.getUTCMinutes() * 60
+    + date.getUTCSeconds()
+  ) / 2);
+  return `${date.getUTCFullYear()}.${dayOfYear}.${twoSecondSlot}`;
+}
+
 export class ChatGptBridge {
   constructor() {
     this.wss = null;
@@ -164,6 +175,7 @@ export class ChatGptBridge {
     const executable = process.env.CHATGPT_CHROME_BIN || "google-chrome";
     const extensionId = this.packageExtension(executable);
     this.removeStaleProfileLocks();
+    this.removeManagedExtensionCache(extensionId);
     const args = [
       `--user-data-dir=${PROFILE_DIR}`,
       "--no-first-run",
@@ -205,9 +217,20 @@ export class ChatGptBridge {
     }
   }
 
+  removeManagedExtensionCache(extensionId) {
+    const installedExtension = path.join(PROFILE_DIR, "Default", "Extensions", extensionId);
+    fs.rmSync(installedExtension, { force: true, recursive: true });
+  }
+
   packageExtension(executable) {
     const generatedCrx = `${EXTENSION_DIR}.crx`;
     const generatedKey = `${EXTENSION_DIR}.pem`;
+    const manifestPath = path.join(EXTENSION_DIR, "manifest.json");
+    const originalManifest = fs.readFileSync(manifestPath, "utf8");
+    const packagedVersion = runtimeExtensionVersion();
+    const manifest = JSON.parse(originalManifest);
+    manifest.version = packagedVersion;
+    fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
     fs.rmSync(generatedCrx, { force: true });
 
     const args = [
@@ -219,11 +242,15 @@ export class ChatGptBridge {
       args.push(`--pack-extension-key=${EXTENSION_KEY_FILE}`);
     }
 
-    execFileSync(executable, args, {
-      env: { ...process.env, DISPLAY },
-      stdio: "ignore",
-      timeout: 60_000,
-    });
+    try {
+      execFileSync(executable, args, {
+        env: { ...process.env, DISPLAY },
+        stdio: "ignore",
+        timeout: 60_000,
+      });
+    } finally {
+      fs.writeFileSync(manifestPath, originalManifest, "utf8");
+    }
 
     if (!fs.existsSync(EXTENSION_KEY_FILE)) {
       if (!fs.existsSync(generatedKey)) throw new Error("EXTENSION_KEY_NOT_CREATED");
@@ -242,12 +269,11 @@ export class ChatGptBridge {
       path.join(externalDirectory, `${extensionId}.json`),
       JSON.stringify({
         external_crx: EXTENSION_CRX_FILE,
-        external_version: JSON.parse(
-          fs.readFileSync(path.join(EXTENSION_DIR, "manifest.json"), "utf8"),
-        ).version,
+        external_version: packagedVersion,
       }),
       { encoding: "utf8", mode: 0o644 },
     );
+    console.log(`Packaged Chrome extension ${extensionId} version ${packagedVersion}`);
     return extensionId;
   }
 

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { ChatGptEventParser } from "../server/chatgpt-events.js";
-import { incrementalDelta } from "../server/chatgpt.js";
+import { incrementalDelta, runtimeExtensionVersion } from "../server/chatgpt.js";
 
 test("incrementalDelta emits only newly appended content", () => {
   assert.equal(incrementalDelta("", "Olá"), "Olá");
@@ -11,6 +11,14 @@ test("incrementalDelta emits only newly appended content", () => {
 
 test("incrementalDelta ignores substantial rewrites to avoid duplicated output", () => {
   assert.equal(incrementalDelta("Resposta anterior", "Texto completamente diferente"), "");
+});
+
+test("runtime extension versions increase with time and fit Chrome's format", () => {
+  const earlier = runtimeExtensionVersion(new Date("2026-07-28T04:00:00.000Z"));
+  const later = runtimeExtensionVersion(new Date("2026-07-28T04:00:04.000Z"));
+  assert.match(earlier, /^\d{4}\.\d{1,3}\.\d{1,5}$/);
+  assert.equal(earlier, "2026.209.7200");
+  assert.equal(later, "2026.209.7202");
 });
 
 test("ChatGptEventParser accepts fragmented newline-delimited events", () => {
