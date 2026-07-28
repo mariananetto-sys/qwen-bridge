@@ -451,7 +451,13 @@ function extractMarkdown(root) {
 
     if (tag === "pre") {
       const codeNode = node.querySelector("code");
-      const code = (codeNode?.textContent || node.textContent || "").replace(/\n+$/, "");
+      const code = (
+        (codeNode instanceof HTMLElement ? codeNode.innerText : "")
+        || node.innerText
+        || codeNode?.textContent
+        || node.textContent
+        || ""
+      ).replace(/\n+$/, "");
       const language = codeNode?.className.match(/language-([\w-]+)/)?.[1]
         || node.getAttribute("data-language")
         || "";
