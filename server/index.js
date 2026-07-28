@@ -354,6 +354,7 @@ app.post("/v1/chat/completions", authenticate, async (req, res) => {
     const reader = completion.stream.getReader();
     const decoder = new TextDecoder();
     let content = "";
+    let reasoning = "";
     let bridgeWebSearch = null;
 
     if (stream) {
@@ -390,6 +391,7 @@ app.post("/v1/chat/completions", authenticate, async (req, res) => {
           if (stream) res.write(openAiChunk(base, { content: event.delta }));
         }
         if (event.type === "reasoning_snapshot" && typeof event.reasoning === "string") {
+          reasoning = event.reasoning;
           if (stream) {
             res.write(openAiChunk(base, {
               reasoning_snapshot: event.reasoning,
@@ -397,6 +399,7 @@ app.post("/v1/chat/completions", authenticate, async (req, res) => {
           }
         }
         if (event.type === "reasoning" && typeof event.delta === "string") {
+          reasoning += event.delta;
           if (stream) res.write(openAiChunk(base, { reasoning_content: event.delta }));
         }
         if (event.type === "search") {
@@ -422,7 +425,7 @@ app.post("/v1/chat/completions", authenticate, async (req, res) => {
       saveThreads();
     }
 
-    if (!content.trim()) {
+    if (!content.trim() && !reasoning.trim()) {
       throw new Error("EMPTY_PROVIDER_RESPONSE");
     }
 
