@@ -18,9 +18,9 @@ const STOP_SELECTOR = [
 const ASSISTANT_SELECTOR = 'main [data-message-author-role="assistant"]';
 const USER_SELECTOR = 'main [data-message-author-role="user"]';
 const MODEL_LEVELS = {
-  "gpt-5.5": ["Instantâneo", "Instant"],
+  "gpt-5.5": ["Instantâneo", "Instant", "Auto", "Automático", "Automatic", "Rápido", "Fast"],
   "gpt-5.6-sol": ["Médio", "Medium"],
-  "gpt-5.6-sol-thinking": ["Alto", "High"],
+  "gpt-5.6-sol-thinking": ["Alto", "High", "Thinking", "Pensando"],
 };
 
 let activeGeneration = null;
@@ -84,7 +84,7 @@ function generationEvent(requestId, event, detail = {}) {
   }).catch(() => undefined);
 }
 
-function waitFor(predicate, timeoutMs = 30_000, intervalMs = 100) {
+function waitFor(predicate, timeoutMs = 30_000, intervalMs = 100, errorCode = "CHATGPT_INTERFACE_TIMEOUT") {
   const deadline = Date.now() + timeoutMs;
   return new Promise((resolve, reject) => {
     const check = () => {
@@ -94,7 +94,7 @@ function waitFor(predicate, timeoutMs = 30_000, intervalMs = 100) {
         return;
       }
       if (Date.now() >= deadline) {
-        reject(new Error("CHATGPT_INTERFACE_TIMEOUT"));
+        reject(new Error(errorCode));
         return;
       }
       setTimeout(check, intervalMs);
@@ -107,7 +107,7 @@ async function switchModel(modelId) {
   const targetLabels = MODEL_LEVELS[modelId];
   if (!targetLabels) throw new Error("MODEL_UNAVAILABLE");
 
-  const trigger = await waitFor(findModelTrigger, 10_000);
+  const trigger = await waitFor(findModelTrigger, 10_000, 100, "MODEL_SELECTOR_NOT_FOUND");
   if (exactLabel(trigger, targetLabels)) return;
 
   trigger.click();
@@ -116,13 +116,13 @@ async function switchModel(modelId) {
       ...document.querySelectorAll('button, [role="menuitem"], [role="option"]'),
     ].filter((element) => visible(element) && exactLabel(element, targetLabels));
     return candidates.at(-1) || null;
-  }, 5_000);
+  }, 5_000, 100, "MODEL_UNAVAILABLE");
   target.click();
 
   await waitFor(() => {
     const selected = findModelTrigger();
     return selected && exactLabel(selected, targetLabels);
-  }, 5_000);
+  }, 5_000, 100, "MODEL_SELECTION_FAILED");
 }
 
 function fillPrompt(input, prompt) {
@@ -407,7 +407,7 @@ async function monitorGeneration(requestId, assistantBaseline, timeoutMs, webBas
 async function startGeneration(message) {
   if (activeGeneration) throw new Error("CHATGPT_GENERATION_BUSY");
   await switchModel(message.modelId);
-  let input = await waitFor(findInput, 30_000);
+  let input = await waitFor(findInput, 30_000, 100, "CHATGPT_INPUT_NOT_FOUND");
   const assistantBaseline = new Set(assistantBlocks());
   const userBaseline = new Set(userBlocks());
   const threadBefore = isThreadPage() ? location.pathname : null;
@@ -441,7 +441,7 @@ async function startGeneration(message) {
     await submit();
     let accepted = await waitFor(() => submitted(), 8_000, 120).then(() => true).catch(() => false);
     if (!accepted) {
-      input = await waitFor(findInput, 5_000);
+      input = await waitFor(findInput, 5_000, 100, "CHATGPT_INPUT_NOT_FOUND");
       await submit();
       accepted = await waitFor(() => submitted(), 8_000, 120).then(() => true).catch(() => false);
     }

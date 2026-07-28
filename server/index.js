@@ -231,6 +231,8 @@ function errorStatus(error) {
     code === "CHATGPT_LOGIN_REQUIRED"
     || code === "CHATGPT_EXTENSION_DISCONNECTED"
     || code === "MODEL_SELECTOR_NOT_FOUND"
+    || code === "MODEL_SELECTION_FAILED"
+    || code === "CHATGPT_INPUT_NOT_FOUND"
   ) return 503;
   if (code === "CHATGPT_GENERATION_BUSY") return 409;
   if (code === "CHATGPT_TIMEOUT") return 504;
@@ -244,6 +246,7 @@ function publicErrorMessage(code) {
     MODEL_UNAVAILABLE: "Este nível não está disponível na conta conectada.",
     MODEL_SELECTOR_NOT_FOUND: "O seletor de nível do ChatGPT mudou ou não está disponível.",
     MODEL_SELECTION_FAILED: "O ChatGPT não confirmou a troca de nível.",
+    CHATGPT_INPUT_NOT_FOUND: "O campo de mensagem do ChatGPT não foi encontrado.",
     CHATGPT_LOGIN_REQUIRED: "A conta do ChatGPT precisa ser conectada novamente.",
     CHATGPT_EXTENSION_DISCONNECTED: "A extensão local do Chrome ainda não se conectou ao bridge.",
     CHATGPT_GENERATION_BUSY: "O Chrome ainda está concluindo outra resposta.",
