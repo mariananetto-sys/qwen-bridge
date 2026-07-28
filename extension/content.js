@@ -227,13 +227,18 @@ function extractWebActivity(root) {
   return { markers: markerNodes.length, sources };
 }
 
-function extractVisibleReasoning(root) {
-  if (!(root instanceof HTMLElement)) return "";
+function visibleReasoningEntries(root) {
+  if (!(root instanceof HTMLElement)) return [];
   const marker = /\b(?:thinking|planning|analyzing|researching|working|searched|stopped thinking)\b|(?:pensando|planejando|analisando|pesquisando|trabalhando|parou de pensar)/i;
   const selectors = [
     '[data-testid*="thinking"]',
     '[data-testid*="reasoning"]',
     '[data-testid*="activity"]',
+    '[class*="thinking"]',
+    '[class*="reasoning"]',
+    '[aria-expanded]',
+    '[aria-controls]',
+    '[role="status"]',
     "details",
     "summary",
     "button",
@@ -243,17 +248,23 @@ function extractVisibleReasoning(root) {
   for (const node of root.querySelectorAll(selectors)) {
     if (!visible(node)) continue;
     const label = `${normalizedText(node)} ${node.getAttribute("aria-label") || ""}`.trim();
-    if (!marker.test(label)) continue;
+    if (!label || label.length > 2_000 || !marker.test(label)) continue;
     const semantic = node.closest(
       '[data-testid*="thinking"], [data-testid*="reasoning"], [data-testid*="activity"], details',
     );
-    const containerText = normalizedText(semantic || node.parentElement || node);
+    const containerText = normalizedText(semantic || node);
     const value = (containerText.length <= 2_000 ? containerText : label).trim();
     if (!value || values.some((entry) => entry === value || entry.includes(value))) continue;
     values.push(value);
-    if (values.length >= 12) break;
   }
-  return values.join("\n").slice(0, 16_000);
+  return values.slice(-12);
+}
+
+function extractVisibleReasoning(root, baseline = new Set()) {
+  return visibleReasoningEntries(root)
+    .filter((value) => !baseline.has(value))
+    .join("\n")
+    .slice(0, 16_000);
 }
 
 function hasFinalResponseActions(root) {
@@ -394,7 +405,13 @@ function extractMarkdown(root) {
   return markdownRoot ? normalize(walk(markdownRoot)) : "";
 }
 
-async function monitorGeneration(requestId, assistantBaseline, timeoutMs, webBaseline) {
+async function monitorGeneration(
+  requestId,
+  assistantBaseline,
+  timeoutMs,
+  webBaseline,
+  reasoningBaseline,
+) {
   const deadline = Date.now() + Math.max(30_000, Number(timeoutMs || 480_000));
   let previous = "";
   let stopSeen = false;
@@ -404,6 +421,8 @@ async function monitorGeneration(requestId, assistantBaseline, timeoutMs, webBas
   let threadReported = false;
   let previousWebSignature = "";
   let previousReasoning = "";
+  let reasoningTranscript = "";
+  let lastReasoningCheckAt = 0;
 
   while (Date.now() < deadline && activeGeneration?.requestId === requestId) {
     if (!threadReported && /^https:\/\/chatgpt\.com\/c\/[a-z0-9-]+\/?$/i.test(location.href)) {
@@ -427,11 +446,17 @@ async function monitorGeneration(requestId, assistantBaseline, timeoutMs, webBas
       stableChecks += 1;
     }
 
-    const visibleReasoning = extractVisibleReasoning(currentBlock || document.querySelector("main"));
-    if (visibleReasoning && visibleReasoning !== previousReasoning) {
-      previousReasoning = visibleReasoning;
-      lastChangeAt = Date.now();
-      generationEvent(requestId, "reasoning", { content: visibleReasoning });
+    if (Date.now() - lastReasoningCheckAt >= 400) {
+      lastReasoningCheckAt = Date.now();
+      const visibleReasoning = extractVisibleReasoning(document.body, reasoningBaseline);
+      if (visibleReasoning && visibleReasoning !== previousReasoning) {
+        previousReasoning = visibleReasoning;
+        if (!reasoningTranscript) reasoningTranscript = visibleReasoning;
+        else if (visibleReasoning.startsWith(reasoningTranscript)) reasoningTranscript = visibleReasoning;
+        else if (!reasoningTranscript.includes(visibleReasoning)) reasoningTranscript += `\n${visibleReasoning}`;
+        lastChangeAt = Date.now();
+        generationEvent(requestId, "reasoning", { content: reasoningTranscript });
+      }
     }
 
     const pageActivity = extractWebActivity(document.querySelector("main"));
@@ -459,7 +484,7 @@ async function monitorGeneration(requestId, assistantBaseline, timeoutMs, webBas
     const finished = stopSeen
       ? !stopVisible && hasOutput && (
         (finalActions && idleChecks >= 6 && quietFor >= 1_200)
-        || (idleChecks >= 30 && quietFor >= 8_000)
+        || (idleChecks >= 100 && quietFor >= 30_000)
       )
       : Boolean(current) && (
         (finalActions && stableChecks >= 6 && quietFor >= 1_000)
@@ -491,6 +516,7 @@ async function startGeneration(message) {
   const userBaseline = new Set(userBlocks());
   const threadBefore = isThreadPage() ? location.pathname : null;
   const webBaseline = extractWebActivity(document.querySelector("main"));
+  const reasoningBaseline = new Set(visibleReasoningEntries(document.body));
   activeGeneration = { requestId: message.requestId };
 
   const submit = async () => {
@@ -530,7 +556,13 @@ async function startGeneration(message) {
     throw error;
   }
 
-  void monitorGeneration(message.requestId, assistantBaseline, message.timeoutMs, webBaseline);
+  void monitorGeneration(
+    message.requestId,
+    assistantBaseline,
+    message.timeoutMs,
+    webBaseline,
+    reasoningBaseline,
+  );
 }
 
 function cancelGeneration(requestId) {
