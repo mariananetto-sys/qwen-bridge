@@ -44,6 +44,14 @@ function exactLabel(element, labels) {
   return labels.some((label) => label.toLocaleLowerCase() === value);
 }
 
+function optionLabel(element, labels) {
+  const value = normalizedText(element).toLocaleLowerCase();
+  return labels.some((label) => {
+    const expected = label.toLocaleLowerCase();
+    return value === expected || value.startsWith(`${expected} `);
+  });
+}
+
 function findInput() {
   for (const selector of INPUT_SELECTORS) {
     const element = document.querySelector(selector);
@@ -114,7 +122,7 @@ async function switchModel(modelId) {
   const target = await waitFor(() => {
     const candidates = [
       ...document.querySelectorAll('button, [role="menuitem"], [role="option"]'),
-    ].filter((element) => visible(element) && exactLabel(element, targetLabels));
+    ].filter((element) => visible(element) && optionLabel(element, targetLabels));
     return candidates.at(-1) || null;
   }, 5_000, 100, "MODEL_UNAVAILABLE");
   target.click();
@@ -123,6 +131,18 @@ async function switchModel(modelId) {
     const selected = findModelTrigger();
     return selected && exactLabel(selected, targetLabels);
   }, 5_000, 100, "MODEL_SELECTION_FAILED");
+}
+
+async function ensureIdle() {
+  const stop = document.querySelector(STOP_SELECTOR);
+  if (!visible(stop)) return;
+  stop.click();
+  await waitFor(
+    () => !visible(document.querySelector(STOP_SELECTOR)),
+    20_000,
+    120,
+    "CHATGPT_GENERATION_BUSY",
+  );
 }
 
 function fillPrompt(input, prompt) {
@@ -406,6 +426,7 @@ async function monitorGeneration(requestId, assistantBaseline, timeoutMs, webBas
 
 async function startGeneration(message) {
   if (activeGeneration) throw new Error("CHATGPT_GENERATION_BUSY");
+  await ensureIdle();
   await switchModel(message.modelId);
   let input = await waitFor(findInput, 30_000, 100, "CHATGPT_INPUT_NOT_FOUND");
   const assistantBaseline = new Set(assistantBlocks());
