@@ -18,9 +18,10 @@ const STOP_SELECTOR = [
 const ASSISTANT_SELECTOR = 'main [data-message-author-role="assistant"]';
 const USER_SELECTOR = 'main [data-message-author-role="user"]';
 const MODEL_LEVELS = {
-  "gpt-5.5": ["Instantâneo", "Instant", "Auto", "Automático", "Automatic", "Rápido", "Fast"],
-  "gpt-5.6-sol": ["Médio", "Medium"],
-  "gpt-5.6-sol-thinking": ["Alto", "High", "Thinking", "Pensando"],
+  "gpt-5.5-instant": ["Instant 5.5", "Instantâneo 5.5", "Instant"],
+  "gpt-5.5-medium": ["Medium", "Médio"],
+  "gpt-5.6-sol": ["High", "Alto"],
+  "gpt-5.6-sol-thinking": ["High", "Alto"],
 };
 
 let activeGeneration = null;
@@ -401,8 +402,9 @@ function extractMarkdown(root) {
     return children();
   };
 
-  const markdownRoot = root.querySelector(".markdown, .prose");
-  return markdownRoot ? normalize(walk(markdownRoot)) : "";
+  const markdownRoots = [...root.querySelectorAll(".markdown, .prose")]
+    .filter((candidate) => !candidate.parentElement?.closest(".markdown, .prose"));
+  return normalize(markdownRoots.map((markdownRoot) => walk(markdownRoot)).join("\n\n"));
 }
 
 async function monitorGeneration(
@@ -435,8 +437,12 @@ async function monitorGeneration(
     idleChecks = stopSeen && !stopVisible ? idleChecks + 1 : 0;
 
     const blocks = assistantBlocks();
-    const currentBlock = blocks.findLast((block) => !assistantBaseline.has(block)) || null;
-    const current = currentBlock ? extractMarkdown(currentBlock) : "";
+    const currentBlocks = blocks.filter((block) => !assistantBaseline.has(block));
+    const currentBlock = currentBlocks.at(-1) || null;
+    const current = currentBlocks
+      .map((block) => extractMarkdown(block))
+      .filter(Boolean)
+      .join("\n\n");
     if (current && current !== previous) {
       previous = current;
       stableChecks = 0;

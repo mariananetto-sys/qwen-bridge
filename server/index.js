@@ -99,14 +99,16 @@ function validateSetupInput(req, res, next) {
 }
 
 const MODEL_ALIASES = {
-  "gpt-5.5": "gpt-5.5",
-  "instant": "gpt-5.5",
-  "instantaneo": "gpt-5.5",
-  "instantâneo": "gpt-5.5",
-  "flash": "gpt-5.5",
-  "medium": "gpt-5.5",
-  "medio": "gpt-5.5",
-  "médio": "gpt-5.5",
+  "gpt-5.5": "gpt-5.5-instant",
+  "gpt-5.5-instant": "gpt-5.5-instant",
+  "instant": "gpt-5.5-instant",
+  "instantaneo": "gpt-5.5-instant",
+  "instantâneo": "gpt-5.5-instant",
+  "flash": "gpt-5.5-instant",
+  "gpt-5.5-medium": "gpt-5.5-medium",
+  "medium": "gpt-5.5-medium",
+  "medio": "gpt-5.5-medium",
+  "médio": "gpt-5.5-medium",
   "gpt-5.6-sol": "gpt-5.6-sol",
   "sol": "gpt-5.6-sol",
   "high": "gpt-5.6-sol",
@@ -119,13 +121,14 @@ const MODEL_ALIASES = {
 };
 
 const MODELS = [
-  { id: "gpt-5.5", label: "Instantâneo" },
-  { id: "gpt-5.6-sol", label: "Médio" },
-  { id: "gpt-5.6-sol-thinking", label: "Alto" },
+  { id: "gpt-5.5-instant", label: "Instant 5.5" },
+  { id: "gpt-5.5-medium", label: "Medium" },
+  { id: "gpt-5.6-sol", label: "High" },
+  { id: "gpt-5.6-sol-thinking", label: "High" },
 ];
 
 function normalizeModel(value) {
-  const requested = String(value || "gpt-5.5").trim().toLocaleLowerCase("pt-BR");
+  const requested = String(value || "gpt-5.5-instant").trim().toLocaleLowerCase("pt-BR");
   const id = MODEL_ALIASES[requested];
   if (!id) throw new Error("MODEL_UNAVAILABLE");
   return MODELS.find((model) => model.id === id);
