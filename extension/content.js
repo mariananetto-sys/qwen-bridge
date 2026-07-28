@@ -74,8 +74,16 @@ function findModelTrigger() {
 
 function findVisibleOption(labels) {
   const candidates = [
-    ...document.querySelectorAll('button, [role="menuitem"], [role="option"]'),
-  ].filter((element) => visible(element) && optionLabel(element, labels));
+    ...document.querySelectorAll(
+      'button, [role="menuitem"], [role="menuitemradio"], [role="option"], [role="radio"], div, span',
+    ),
+  ].filter((element) => {
+    if (!visible(element)) return false;
+    const text = normalizedText(element);
+    if (!text || text.length > 100 || !optionLabel(element, labels)) return false;
+    return ![...element.children].some((child) =>
+      visible(child) && normalizedText(child).length <= text.length && optionLabel(child, labels));
+  });
   return candidates.at(-1) || null;
 }
 
