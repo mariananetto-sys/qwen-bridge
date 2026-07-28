@@ -44,6 +44,14 @@ test("ChatGptEventParser preserves visible reasoning activity", () => {
   ]);
 });
 
+test("ChatGptEventParser preserves replaceable content snapshots", () => {
+  const parser = new ChatGptEventParser();
+  assert.deepEqual(
+    parser.push('{"type":"content_snapshot","content":"Resposta completa"}\n', true),
+    [{ type: "content_snapshot", content: "Resposta completa" }],
+  );
+});
+
 test("ChatGptEventParser ignores invalid private relay lines", () => {
   const parser = new ChatGptEventParser();
   assert.deepEqual(parser.push("not-json\n", true), []);

@@ -6,7 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import cors from "cors";
 import express from "express";
-import chatgpt from "./chatgpt.js";
+import chatgpt, { incrementalDelta } from "./chatgpt.js";
 import { ChatGptEventParser } from "./chatgpt-events.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -348,9 +348,26 @@ app.post("/v1/chat/completions", authenticate, async (req, res) => {
       const { done, value } = await reader.read();
       const events = parser.push(value ? decoder.decode(value, { stream: true }) : "", done);
       for (const event of events) {
+        if (event.type === "content_snapshot" && typeof event.content === "string") {
+          const delta = incrementalDelta(content, event.content);
+          content = event.content;
+          if (stream) {
+            res.write(openAiChunk(base, {
+              ...(delta ? { content: delta } : {}),
+              content_snapshot: event.content,
+            }));
+          }
+        }
         if (event.type === "content" && typeof event.delta === "string") {
           content += event.delta;
           if (stream) res.write(openAiChunk(base, { content: event.delta }));
+        }
+        if (event.type === "reasoning_snapshot" && typeof event.reasoning === "string") {
+          if (stream) {
+            res.write(openAiChunk(base, {
+              reasoning_snapshot: event.reasoning,
+            }));
+          }
         }
         if (event.type === "reasoning" && typeof event.delta === "string") {
           if (stream) res.write(openAiChunk(base, { reasoning_content: event.delta }));

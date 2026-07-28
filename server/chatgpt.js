@@ -312,21 +312,23 @@ export class ChatGptBridge {
     }
 
     if (message.event === "content" && typeof message.content === "string") {
-      const delta = incrementalDelta(generation.previous, message.content);
-      if (!delta) return;
       generation.previous = message.content;
       generation.controller.enqueue(
-        generation.encoder.encode(`${JSON.stringify({ type: "content", delta })}\n`),
+        generation.encoder.encode(`${JSON.stringify({
+          type: "content_snapshot",
+          content: message.content,
+        })}\n`),
       );
       return;
     }
 
     if (message.event === "reasoning" && typeof message.content === "string") {
-      const delta = incrementalDelta(generation.previousReasoning, message.content);
-      if (!delta) return;
       generation.previousReasoning = message.content;
       generation.controller.enqueue(
-        generation.encoder.encode(`${JSON.stringify({ type: "reasoning", delta })}\n`),
+        generation.encoder.encode(`${JSON.stringify({
+          type: "reasoning_snapshot",
+          reasoning: message.content,
+        })}\n`),
       );
       return;
     }
