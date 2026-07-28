@@ -2,7 +2,7 @@
 
 ## Autenticação
 
-Todas as rotas privadas exigem:
+As rotas privadas exigem:
 
 ```http
 Authorization: Bearer <CHATGPT_BRIDGE_API_KEY>
@@ -29,13 +29,13 @@ Content-Type: application/json
 }
 ```
 
-Modelos aceitos:
+Modelos:
 
 - `gpt-5.5`
 - `gpt-5.6-sol`
 - `gpt-5.6-sol-thinking`
 
-Aliases aceitos:
+Aliases:
 
 - `instant`, `flash`
 - `medium`, `medio`, `médio`
@@ -43,9 +43,19 @@ Aliases aceitos:
 
 ## Conversas
 
-`conversation_id` associa a conversa do consumidor à URL criada no ChatGPT. Quando o modelo muda, o bridge cria uma nova conversa e importa o histórico recebido na solicitação, impedindo que uma conversa antiga seja aberta com o nível errado.
+`conversation_id` associa a conversa do consumidor à URL criada no ChatGPT. Quando o nível muda, o bridge cria outra conversa e importa o histórico recebido, evitando abrir uma conversa antiga no nível errado.
 
-O cabeçalho `X-ChatGPT-Thread-Url` contém a URL persistida.
+O cabeçalho `X-ChatGPT-Thread-Url` informa a URL conhecida no início da resposta. A associação definitiva é persistida quando a interface fornece a nova URL.
+
+## Streaming
+
+Com `"stream": true`, a API responde usando SSE no formato de Chat Completions:
+
+```text
+data: {"object":"chat.completion.chunk",...}
+
+data: [DONE]
+```
 
 ## Cancelamento
 
@@ -53,7 +63,7 @@ O cabeçalho `X-ChatGPT-Thread-Url` contém a URL persistida.
 POST /v1/conversations/:conversationId/cancel
 ```
 
-Exemplo:
+Resposta:
 
 ```json
 {
@@ -64,14 +74,32 @@ Exemplo:
 
 `state` pode ser `running`, `queued` ou `idle`.
 
+## Healthcheck
+
+```http
+GET /health
+```
+
+Estados:
+
+- `extension_connecting`
+- `login_required`
+- `ok`
+
+O payload também informa fila, geração ativa, conexão da extensão e SearXNG.
+
 ## Erros relevantes
 
 | Código | Significado |
 | --- | --- |
-| `CHATGPT_LOGIN_REQUIRED` | O perfil precisa ser conectado novamente. |
-| `MODEL_UNAVAILABLE` | O nível não aparece na conta conectada. |
-| `MODEL_SELECTOR_NOT_FOUND` | A interface mudou e o seletor não foi localizado. |
+| `CHATGPT_EXTENSION_DISCONNECTED` | Chrome ou extensão ainda não conectou. |
+| `CHATGPT_LOGIN_REQUIRED` | O perfil precisa de login. |
+| `CHATGPT_GENERATION_BUSY` | Outra resposta ainda está em andamento. |
+| `CHATGPT_INTERFACE_TIMEOUT` | O campo ou seletor não apareceu a tempo. |
+| `CHATGPT_NAVIGATION_TIMEOUT` | A conversa não abriu a tempo. |
+| `MODEL_UNAVAILABLE` | O nível não aparece na conta. |
+| `MODEL_SELECTOR_NOT_FOUND` | O seletor de nível mudou. |
 | `BRIDGE_QUEUE_FULL` | Há solicitações demais aguardando. |
 | `BRIDGE_QUEUE_TIMEOUT` | A solicitação esperou demais na fila. |
-| `CHATGPT_TIMEOUT` | A geração ultrapassou o limite configurado. |
+| `CHATGPT_TIMEOUT` | A geração ultrapassou o limite. |
 | `EMPTY_PROVIDER_RESPONSE` | A interface terminou sem conteúdo extraível. |

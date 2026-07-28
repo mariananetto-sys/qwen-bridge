@@ -195,7 +195,8 @@
         </div>
         <p class="lede">
           Digite a chave privada do bridge e controle a tela abaixo como um navegador.
-          Faça o login manualmente. A senha não é guardada por esta página.
+          Faça o login manualmente no Chrome normal, sem WebDriver. Abra esta página
+          somente por HTTPS ou por um túnel SSH; a senha não é guardada.
         </p>
       </header>
 
@@ -268,7 +269,9 @@
           status.className = state.ready ? "ready" : "";
           status.textContent = state.ready
             ? "Conta conectada. O bridge está pronto."
-            : `Aguardando login · ${state.title || state.url || "Chrome aberto"}`;
+            : state.extensionConnected
+              ? `Aguardando login · ${state.title || state.url || "Chrome aberto"}`
+              : "A extensão local ainda está conectando ao bridge.";
           const response = await request("/setup/screenshot");
           if (screenUrl) URL.revokeObjectURL(screenUrl);
           screenUrl = URL.createObjectURL(await response.blob());

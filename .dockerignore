@@ -5,4 +5,7 @@ dist
 server/auth.json
 server/conversations.json
 server/conversations.json.tmp
+server/state
+extension.crx
+extension.pem
 npm-debug.log

@@ -18,6 +18,8 @@ server/state
 server/auth.json
 server/conversations.json
 server/conversations.json.tmp
+extension.crx
+extension.pem
 
 # Editor directories and files
 .vscode/*

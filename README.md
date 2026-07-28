@@ -1,68 +1,82 @@
 # ChatGPT Bridge
 
-Bridge privado que expõe uma API compatível com `POST /v1/chat/completions` e controla uma sessão pessoal do ChatGPT pelo Google Chrome.
+Bridge privado que expõe uma API compatível com `POST /v1/chat/completions` e usa uma sessão pessoal do ChatGPT no Google Chrome.
 
-O nome do repositório remoto pode continuar sendo `qwen-bridge`; o produto, os arquivos de estado, as variáveis e os logs internos usam o nome ChatGPT Bridge.
+O repositório remoto pode continuar se chamando `qwen-bridge`. O produto, os logs e as variáveis novas usam o nome ChatGPT Bridge.
 
-## O que esta versão faz
+## Como funciona
 
-- Usa o Google Chrome original com perfil persistente.
-- Exige login manual; não guarda e-mail ou senha no `.env`.
-- Cria uma conversa real do ChatGPT para cada `conversation_id`.
-- Retoma a URL correta quando o SKMake volta a uma conversa anterior.
-- Transmite a resposta incrementalmente por SSE.
-- Mantém uma fila serial para impedir que duas conversas disputem a mesma página.
-- Permite cancelar uma geração ativa ou ainda na fila.
-- Converte parágrafos, listas, links, tabelas e blocos de código da interface para Markdown.
-- Conserva a pesquisa privada pelo SearXNG na rota `/v1/search`.
+- O Google Chrome estável é iniciado diretamente, sem Playwright, Selenium ou WebDriver.
+- Uma extensão Manifest V3 instalada localmente controla apenas `chatgpt.com`.
+- A extensão se comunica com o Node por WebSocket limitado a `127.0.0.1:3002`.
+- O login é manual e fica no perfil persistente do Chrome.
+- Cada `conversation_id` do SKMake é associado à conversa correspondente do ChatGPT.
+- As respostas são extraídas da interface e transmitidas incrementalmente por SSE.
+- A fila é serial para impedir que duas gerações disputem a mesma janela.
+- Cancelamento, troca de nível, retomada de conversa e Markdown continuam disponíveis.
+- O SearXNG privado permanece em `/v1/search`.
 
-## Níveis disponíveis
+O bridge não extrai cookies, não usa endpoints privados do ChatGPT e não tenta esconder automação.
 
-O bridge usa somente os níveis visíveis na conta conectada:
+## Níveis
 
-| ID da API | Opção selecionada no ChatGPT |
+| ID da API | Opção no ChatGPT |
 | --- | --- |
 | `gpt-5.5` | Instantâneo |
 | `gpt-5.6-sol` | Médio |
 | `gpt-5.6-sol-thinking` | Alto |
 
-Os aliases `flash`, `medium`, `high`, `pro` e `specialized` são aceitos para facilitar a integração com o SKMake. `pro` e `specialized` usam Alto porque a conta conectada não oferece Pro ou Extra alto.
-
-Se uma opção não existir na interface, a API devolve `MODEL_UNAVAILABLE` em vez de manter a solicitação carregando indefinidamente.
+Os aliases `flash`, `medium`, `high`, `pro` e `specialized` também são aceitos. `pro` e `specialized` usam Alto enquanto a conta conectada não oferecer níveis superiores.
 
 ## Instalação na VM
 
 Recomendado: 2 CPUs, 4 GB de RAM, disco persistente e Docker Compose.
 
 ```bash
+cd ~/qwen-bridge
 git pull
 cp .env.example .env
 nano .env
-docker rm -f qwen-bridge chatgpt-bridge 2>/dev/null || true
+docker compose down --remove-orphans
 docker compose up -d --build
 docker logs -f chatgpt-bridge
 ```
 
-O Docker instala o Google Chrome original e o executa visualmente dentro do Xvfb. O perfil fica no volume `chatgpt-state`.
+Na primeira inicialização, o bridge:
 
-Depois que o servidor iniciar, abra:
+1. Empacota e assina a extensão com uma chave criada no volume persistente.
+2. Registra o pacote local no Google Chrome para Linux.
+3. Abre o Chrome normal em um display virtual.
+4. Espera a extensão conectar ao WebSocket local.
 
-```text
-https://ENDERECO-DO-BRIDGE/setup
+A chave de assinatura, o pacote da extensão, o perfil e as conversas ficam no volume `chatgpt-state`.
+
+## Login manual
+
+Não digite senha por uma porta HTTP pública. Use HTTPS ou abra um túnel SSH:
+
+```powershell
+gcloud compute ssh instance-20260722-055446 `
+  --project=project-cf711618-b4f4-4493-947 `
+  --zone=us-central1-a `
+  --ssh-flag="-L 3001:localhost:3001"
 ```
 
-Informe `CHATGPT_BRIDGE_API_KEY` e conclua o login pela tela remota. A rota `/health` muda para `status: "ok"` quando o campo de mensagem do ChatGPT estiver disponível.
+Com o túnel aberto, acesse:
+
+```text
+http://localhost:3001/setup
+```
+
+Informe `CHATGPT_BRIDGE_API_KEY`, controle o Chrome remoto e faça o login. A rota `/health` retorna `status: "ok"` quando a extensão encontra o campo de mensagem do ChatGPT.
 
 ## Variáveis
 
 ```env
 PORT=3001
 CHATGPT_BRIDGE_API_KEY=uma-chave-longa-e-aleatoria
-CHATGPT_HEADLESS=false
-CHATGPT_BROWSER_CHANNEL=chrome
 CHATGPT_STATE_DIR=/data
 CHATGPT_GENERATION_TIMEOUT_MS=480000
-CHATGPT_POLL_INTERVAL_MS=160
 MAX_QUEUE_SIZE=20
 QUEUE_TIMEOUT_MS=120000
 MAX_BODY_SIZE=2mb
@@ -71,14 +85,22 @@ SEARXNG_URL=http://searxng:8080
 SEARXNG_SECRET=outra-chave-longa-e-aleatoria
 ```
 
-Não configure credenciais da conta. O login é manual e permanece apenas no perfil persistente do Chrome.
+Variáveis opcionais:
+
+```env
+CHATGPT_CHROME_BIN=google-chrome
+CHATGPT_CHROME_AUTOSTART=true
+CHATGPT_SYSTEM_PROMPT=Prompt personalizado
+```
+
+Não coloque e-mail, senha, cookies ou tokens de sessão no `.env`.
 
 ## Variáveis no SKMake
 
-Enquanto o SKMake ainda usa os nomes antigos das variáveis, você pode manter o endereço nelas e apontar os níveis para os novos IDs:
+Enquanto o SKMake mantiver os nomes antigos:
 
 ```env
-QWEN_BRIDGE_URL=https://ENDERECO-DO-BRIDGE
+QWEN_BRIDGE_URL=https://ENDERECO-PROTEGIDO-DO-BRIDGE
 QWEN_BRIDGE_API_KEY=a-mesma-chave-do-CHATGPT_BRIDGE_API_KEY
 QWEN_BRIDGE_MODEL=gpt-5.5
 QWEN_BRIDGE_MODEL_HIGH=gpt-5.6-sol-thinking
@@ -86,16 +108,14 @@ QWEN_BRIDGE_MODEL_PRO=gpt-5.6-sol-thinking
 QWEN_BRIDGE_MODEL_SPECIALIZED=gpt-5.6-sol-thinking
 ```
 
-O nome dessas variáveis pertence ao SKMake e pode ser migrado separadamente. O bridge não depende delas.
-
 ## API
 
-- `POST /v1/chat/completions`: cria ou continua uma conversa.
-- `GET /v1/models`: lista os níveis aceitos.
-- `POST /v1/conversations/:id/cancel`: cancela uma geração ativa ou na fila.
-- `GET /v1/search?q=consulta&limit=7`: pesquisa pelo SearXNG privado.
-- `GET /health`: informa login, fila, navegador e pesquisa.
-- `GET /setup`: interface protegida para o primeiro login.
+- `POST /v1/chat/completions`
+- `GET /v1/models`
+- `POST /v1/conversations/:id/cancel`
+- `GET /v1/search?q=consulta&limit=7`
+- `GET /health`
+- `GET /setup`
 
 Exemplo:
 
@@ -113,14 +133,25 @@ curl http://localhost:3001/v1/chat/completions \
   }'
 ```
 
-Para streaming, use `"stream": true`. A resposta segue o formato SSE compatível com Chat Completions.
+## Diagnóstico
 
-## Segurança e limitações
+```bash
+docker ps -a
+docker logs chatgpt-bridge --tail 150
+curl -i http://localhost:3001/health
+```
 
-- Este projeto automatiza uma interface sujeita a mudanças. Seletores podem precisar de manutenção.
-- O Chrome original reduz diferenças de navegador, mas não elimina verificações ou desafios de login.
-- O bridge não implementa evasão, stealth, endpoints privados ou extração de cookies.
-- Não publique a porta sem HTTPS e autenticação adicional de rede.
-- Não envie o volume `chatgpt-state`, o perfil do Chrome ou capturas autenticadas ao GitHub.
-- A fila é serial por padrão porque uma única página controla uma única conta.
+Estados do healthcheck:
+
+- `extension_connecting`: Chrome ou extensão ainda iniciando.
+- `login_required`: extensão conectada, mas falta entrar no ChatGPT.
+- `ok`: conta conectada e pronta.
+
+## Limitações e segurança
+
+- A interface do ChatGPT pode mudar e exigir atualização dos seletores.
+- O bridge não é uma integração oficial da API da OpenAI.
+- Não publique `/setup` sem HTTPS ou túnel SSH.
+- Não envie o volume, o perfil, a chave da extensão ou capturas autenticadas ao GitHub.
+- Uma única janela atende uma geração por vez.
 - O uso deve respeitar os termos e limites da conta conectada.

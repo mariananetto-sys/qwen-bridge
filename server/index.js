@@ -228,7 +228,12 @@ function errorStatus(error) {
   if (code === "MESSAGES_REQUIRED") return 400;
   if (code === "MODEL_UNAVAILABLE") return 422;
   if (code === "BRIDGE_QUEUE_FULL" || code === "BRIDGE_QUEUE_TIMEOUT") return 429;
-  if (code === "CHATGPT_LOGIN_REQUIRED" || code === "MODEL_SELECTOR_NOT_FOUND") return 503;
+  if (
+    code === "CHATGPT_LOGIN_REQUIRED"
+    || code === "CHATGPT_EXTENSION_DISCONNECTED"
+    || code === "MODEL_SELECTOR_NOT_FOUND"
+  ) return 503;
+  if (code === "CHATGPT_GENERATION_BUSY") return 409;
   if (code === "CHATGPT_TIMEOUT") return 504;
   if (code === "GENERATION_CANCELLED") return 499;
   return 502;
@@ -241,6 +246,10 @@ function publicErrorMessage(code) {
     MODEL_SELECTOR_NOT_FOUND: "O seletor de nível do ChatGPT mudou ou não está disponível.",
     MODEL_SELECTION_FAILED: "O ChatGPT não confirmou a troca de nível.",
     CHATGPT_LOGIN_REQUIRED: "A conta do ChatGPT precisa ser conectada novamente.",
+    CHATGPT_EXTENSION_DISCONNECTED: "A extensão local do Chrome ainda não se conectou ao bridge.",
+    CHATGPT_GENERATION_BUSY: "O Chrome ainda está concluindo outra resposta.",
+    CHATGPT_INTERFACE_TIMEOUT: "A interface do ChatGPT demorou demais para ficar pronta.",
+    CHATGPT_NAVIGATION_TIMEOUT: "O ChatGPT demorou demais para abrir a conversa.",
     CHATGPT_TIMEOUT: "O ChatGPT demorou além do limite configurado.",
     BRIDGE_QUEUE_FULL: "A fila do bridge está cheia.",
     BRIDGE_QUEUE_TIMEOUT: "A solicitação aguardou demais na fila.",
@@ -491,14 +500,20 @@ app.get("/health", async (_req, res) => {
     // Chat remains available while the optional search service restarts.
   }
 
-  const status = chatgpt.isReady ? "ok" : "login_required";
+  const browser = await chatgpt.setupStatus();
+  const status = chatgpt.isReady
+    ? "ok"
+    : browser.extensionConnected
+      ? "login_required"
+      : "extension_connecting";
   res.status(chatgpt.isReady ? 200 : 503).json({
     status,
     activeGenerations,
     queuedGenerations: queue.size,
     maxConcurrentGenerations: 1,
     browserReady: chatgpt.isReady,
-    browserChannel: process.env.CHATGPT_BROWSER_CHANNEL || "chrome",
+    extensionConnected: browser.extensionConnected,
+    browserChannel: "chrome-extension",
     searchReady,
   });
 });
@@ -550,15 +565,11 @@ app.use((error, _req, res, _next) => {
 function start() {
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`ChatGPT Bridge ready on port ${PORT}`);
-    console.log("Starting Google Chrome in the background...");
+    console.log("Starting Google Chrome without WebDriver...");
 
     chatgpt.init()
       .then(() => {
-        console.log(
-          chatgpt.isReady
-            ? "ChatGPT browser session is ready"
-            : "Google Chrome started; ChatGPT login is required at /setup",
-        );
+        console.log("Chrome extension bridge initialized; open /setup to connect the account");
       })
       .catch((error) => {
         console.error("Google Chrome initialization failed", error);

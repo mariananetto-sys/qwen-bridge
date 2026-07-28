@@ -15,7 +15,7 @@ export class ChatGptEventParser {
         const event = JSON.parse(line);
         if (event && typeof event === "object") events.push(event);
       } catch {
-        // DOM relay events are private to this process. Invalid lines are ignored.
+        // Extension relay events are private to this process. Invalid lines are ignored.
       }
     }
     return events;

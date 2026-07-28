@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "SKMake ChatGPT Bridge",
+  "version": "1.0.0",
+  "description": "Conecta uma sessão local do ChatGPT ao SKMake sem WebDriver.",
+  "permissions": [
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://chatgpt.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chatgpt.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}
