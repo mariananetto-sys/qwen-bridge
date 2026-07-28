@@ -18,10 +18,17 @@ const STOP_SELECTOR = [
 const ASSISTANT_SELECTOR = 'main [data-message-author-role="assistant"]';
 const USER_SELECTOR = 'main [data-message-author-role="user"]';
 const MODEL_LEVELS = {
-  "gpt-5.5-instant": ["Instant 5.5", "Instantâneo 5.5", "Instantâneo", "Instant"],
-  "gpt-5.5-medium": ["Medium", "Médio"],
-  "gpt-5.6-sol": ["High", "Alto"],
-  "gpt-5.6-sol-thinking": ["High", "Alto"],
+  "gpt-5.5-instant": [
+    "Instant 5.5",
+    "5.5 Instant",
+    "Instantâneo 5.5",
+    "5.5 Instantâneo",
+    "Instantâneo",
+    "Instant",
+  ],
+  "gpt-5.5-medium": ["Medium", "Médio", "5.5 Medium", "Medium 5.5", "5.5 Médio", "Médio 5.5"],
+  "gpt-5.6-sol": ["High", "Alto", "5.6 Sol High", "High 5.6 Sol", "5.6 Sol Alto", "Alto 5.6 Sol"],
+  "gpt-5.6-sol-thinking": ["High", "Alto", "5.6 Sol High", "High 5.6 Sol", "5.6 Sol Alto", "Alto 5.6 Sol"],
 };
 const MODEL_BASES = {
   "gpt-5.5-medium": ["GPT-5.5"],
@@ -121,7 +128,15 @@ function visibleModelLabels() {
 
 async function openModelMenu() {
   const trigger = await waitFor(findModelTrigger, 10_000, 100, "MODEL_SELECTOR_NOT_FOUND");
-  const menuLabels = ["Instant 5.5", "Instantâneo 5.5", "Medium", "Médio", "GPT-5.6 Sol"];
+  const menuLabels = [
+    "Instant 5.5",
+    "5.5 Instant",
+    "Instantâneo 5.5",
+    "5.5 Instantâneo",
+    "Medium",
+    "Médio",
+    "GPT-5.6 Sol",
+  ];
   activateElement(trigger);
   let opened = await waitFor(
     () => findVisibleOption(menuLabels, trigger),
