@@ -12,4 +12,4 @@ ENV CHATGPT_BROWSER_CHANNEL=chrome
 ENV CHATGPT_STATE_DIR=/data
 VOLUME ["/data"]
 EXPOSE 3001
-CMD ["xvfb-run", "-a", "npm", "run", "server"]
+CMD ["bash", "-lc", "rm -f /tmp/.X99-lock; Xvfb :99 -screen 0 1440x900x24 -nolisten tcp >/tmp/xvfb.log 2>&1 & export DISPLAY=:99; sleep 1; exec npm run server"]
