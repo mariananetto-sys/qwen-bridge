@@ -30,12 +30,6 @@ const MODEL_LEVELS = {
   "gpt-5.6-sol": ["High", "Alto", "5.6 Sol High", "High 5.6 Sol", "5.6 Sol Alto", "Alto 5.6 Sol"],
   "gpt-5.6-sol-thinking": ["High", "Alto", "5.6 Sol High", "High 5.6 Sol", "5.6 Sol Alto", "Alto 5.6 Sol"],
 };
-const MODEL_BASES = {
-  "gpt-5.5-medium": ["GPT-5.5"],
-  "gpt-5.6-sol": ["GPT-5.6 Sol"],
-  "gpt-5.6-sol-thinking": ["GPT-5.6 Sol"],
-};
-
 let activeGeneration = null;
 
 function visible(element) {
@@ -117,64 +111,12 @@ function activateElement(element) {
 function visibleModelLabels() {
   const known = [...new Set([
     ...Object.values(MODEL_LEVELS).flat(),
-    ...Object.values(MODEL_BASES).flat(),
     "GPT-5.6 Sol",
     "GPT-5.5",
     "GPT-5.3",
     "o3",
   ])];
   return known.filter((label) => findVisibleOption([label])).slice(0, 20);
-}
-
-async function openModelMenu() {
-  const trigger = await waitFor(findModelTrigger, 10_000, 100, "MODEL_SELECTOR_NOT_FOUND");
-  const menuLabels = [
-    "Instant 5.5",
-    "5.5 Instant",
-    "Instantâneo 5.5",
-    "5.5 Instantâneo",
-    "Medium",
-    "Médio",
-    "GPT-5.6 Sol",
-  ];
-  activateElement(trigger);
-  let opened = await waitFor(
-    () => findVisibleOption(menuLabels, trigger),
-    1_500,
-    100,
-  ).then(() => true).catch(() => false);
-  if (!opened) {
-    activateElement(trigger);
-    opened = await waitFor(
-      () => findVisibleOption(menuLabels, trigger),
-      2_500,
-      100,
-    ).then(() => true).catch(() => false);
-  }
-  if (!opened) {
-    const error = new Error("MODEL_UNAVAILABLE");
-    error.diagnostic = `menu_not_opened; trigger=${normalizedText(trigger)}; visible=${visibleModelLabels().join("|")}`;
-    throw error;
-  }
-  return trigger;
-}
-
-async function selectModelBase(labels) {
-  await openModelMenu();
-  const submenuTrigger = await waitFor(
-    () => findVisibleOption(["GPT-5.6 Sol"]),
-    5_000,
-    100,
-    "MODEL_UNAVAILABLE",
-  );
-  activateElement(submenuTrigger);
-  const target = await waitFor(
-    () => findVisibleOption(labels),
-    5_000,
-    100,
-    "MODEL_UNAVAILABLE",
-  );
-  activateElement(target);
 }
 
 function currentStatus() {
@@ -225,9 +167,6 @@ function waitFor(predicate, timeoutMs = 30_000, intervalMs = 100, errorCode = "C
 async function switchModel(modelId) {
   const targetLabels = MODEL_LEVELS[modelId];
   if (!targetLabels) throw new Error("MODEL_UNAVAILABLE");
-
-  const baseLabels = MODEL_BASES[modelId];
-  if (baseLabels) await selectModelBase(baseLabels);
 
   const trigger = await waitFor(findModelTrigger, 10_000, 100, "MODEL_SELECTOR_NOT_FOUND");
   if (!exactLabel(trigger, targetLabels)) {
