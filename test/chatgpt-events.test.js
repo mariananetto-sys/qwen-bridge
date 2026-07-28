@@ -30,6 +30,13 @@ test("ChatGptEventParser accepts fragmented newline-delimited events", () => {
   ]);
 });
 
+test("ChatGptEventParser preserves visible reasoning activity", () => {
+  const parser = new ChatGptEventParser();
+  assert.deepEqual(parser.push('{"type":"reasoning","delta":"Planning files"}\n', true), [
+    { type: "reasoning", delta: "Planning files" },
+  ]);
+});
+
 test("ChatGptEventParser ignores invalid private relay lines", () => {
   const parser = new ChatGptEventParser();
   assert.deepEqual(parser.push("not-json\n", true), []);

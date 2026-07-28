@@ -319,6 +319,16 @@ export class ChatGptBridge {
       return;
     }
 
+    if (message.event === "reasoning" && typeof message.content === "string") {
+      const delta = incrementalDelta(generation.previousReasoning, message.content);
+      if (!delta) return;
+      generation.previousReasoning = message.content;
+      generation.controller.enqueue(
+        generation.encoder.encode(`${JSON.stringify({ type: "reasoning", delta })}\n`),
+      );
+      return;
+    }
+
     if (message.event === "search") {
       const sources = Array.isArray(message.sources)
         ? message.sources
@@ -441,6 +451,7 @@ export class ChatGptBridge {
           controller,
           encoder,
           previous: "",
+          previousReasoning: "",
           threadUrl,
           modelId,
           cancelled: () => cancelled,

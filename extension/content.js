@@ -227,6 +227,47 @@ function extractWebActivity(root) {
   return { markers: markerNodes.length, sources };
 }
 
+function extractVisibleReasoning(root) {
+  if (!(root instanceof HTMLElement)) return "";
+  const marker = /\b(?:thinking|planning|analyzing|researching|working|searched|stopped thinking)\b|(?:pensando|planejando|analisando|pesquisando|trabalhando|parou de pensar)/i;
+  const selectors = [
+    '[data-testid*="thinking"]',
+    '[data-testid*="reasoning"]',
+    '[data-testid*="activity"]',
+    "details",
+    "summary",
+    "button",
+    '[role="button"]',
+  ].join(",");
+  const values = [];
+  for (const node of root.querySelectorAll(selectors)) {
+    if (!visible(node)) continue;
+    const label = `${normalizedText(node)} ${node.getAttribute("aria-label") || ""}`.trim();
+    if (!marker.test(label)) continue;
+    const semantic = node.closest(
+      '[data-testid*="thinking"], [data-testid*="reasoning"], [data-testid*="activity"], details',
+    );
+    const containerText = normalizedText(semantic || node.parentElement || node);
+    const value = (containerText.length <= 2_000 ? containerText : label).trim();
+    if (!value || values.some((entry) => entry === value || entry.includes(value))) continue;
+    values.push(value);
+    if (values.length >= 12) break;
+  }
+  return values.join("\n").slice(0, 16_000);
+}
+
+function hasFinalResponseActions(root) {
+  if (!(root instanceof HTMLElement)) return false;
+  const selectors = [
+    '[data-testid*="copy-turn"]',
+    '[data-testid*="good-response"]',
+    '[data-testid*="bad-response"]',
+    'button[aria-label*="Copy"]',
+    'button[aria-label*="Copiar"]',
+  ].join(",");
+  return [...root.querySelectorAll(selectors)].some(visible);
+}
+
 function setNativeInputValue(input, value) {
   const prototype = input instanceof HTMLTextAreaElement
     ? HTMLTextAreaElement.prototype
@@ -246,7 +287,7 @@ async function ensureSkmakeConversationTitle() {
     } catch {
       return false;
     }
-  }) || null, 5_000).catch(() => null);
+  }) || null, 1_500).catch(() => null);
   if (!(link instanceof HTMLElement)) return;
 
   const currentTitle = normalizedText(link).replace(/\s*\[SKMAKE\]\s*$/i, "").trim();
@@ -258,12 +299,12 @@ async function ensureSkmakeConversationTitle() {
   const menuButton = await waitFor(() => [...container.querySelectorAll("button")].find((button) => {
     const label = `${button.getAttribute("aria-label") || ""} ${button.getAttribute("title") || ""}`;
     return /option|menu|more|opç|mais/i.test(label);
-  }) || null, 2_500).catch(() => null);
+  }) || null, 1_000).catch(() => null);
   if (!(menuButton instanceof HTMLElement)) return;
   menuButton.click();
 
   const renameButton = await waitFor(() => [...document.querySelectorAll('button, [role="menuitem"]')].find((element) =>
-    visible(element) && /\b(rename|renomear)\b/i.test(normalizedText(element))) || null, 2_500).catch(() => null);
+    visible(element) && /\b(rename|renomear)\b/i.test(normalizedText(element))) || null, 1_000).catch(() => null);
   if (!(renameButton instanceof HTMLElement)) return;
   renameButton.click();
 
@@ -272,7 +313,7 @@ async function ensureSkmakeConversationTitle() {
     return candidates.find((input) => /rename|renomear|title|título/i.test(`${input.getAttribute("aria-label") || ""} ${input.getAttribute("placeholder") || ""}`))
       || candidates.at(-1)
       || null;
-  }, 2_500).catch(() => null);
+  }, 1_000).catch(() => null);
   if (!(titleInput instanceof HTMLInputElement)) return;
   setNativeInputValue(titleInput, `${currentTitle} [SKMAKE]`);
   titleInput.dispatchEvent(new KeyboardEvent("keydown", {
@@ -362,6 +403,7 @@ async function monitorGeneration(requestId, assistantBaseline, timeoutMs, webBas
   let lastChangeAt = Date.now();
   let threadReported = false;
   let previousWebSignature = "";
+  let previousReasoning = "";
 
   while (Date.now() < deadline && activeGeneration?.requestId === requestId) {
     if (!threadReported && /^https:\/\/chatgpt\.com\/c\/[a-z0-9-]+\/?$/i.test(location.href)) {
@@ -385,6 +427,13 @@ async function monitorGeneration(requestId, assistantBaseline, timeoutMs, webBas
       stableChecks += 1;
     }
 
+    const visibleReasoning = extractVisibleReasoning(currentBlock || document.querySelector("main"));
+    if (visibleReasoning && visibleReasoning !== previousReasoning) {
+      previousReasoning = visibleReasoning;
+      lastChangeAt = Date.now();
+      generationEvent(requestId, "reasoning", { content: visibleReasoning });
+    }
+
     const pageActivity = extractWebActivity(document.querySelector("main"));
     const currentActivity = extractWebActivity(currentBlock);
     const baselineUrls = new Set(webBaseline.sources.map(({ url }) => url));
@@ -404,11 +453,20 @@ async function monitorGeneration(requestId, assistantBaseline, timeoutMs, webBas
       }
     }
 
+    const quietFor = Date.now() - lastChangeAt;
+    const finalActions = hasFinalResponseActions(currentBlock);
+    const hasOutput = Boolean(current || previousReasoning);
     const finished = stopSeen
-      ? !stopVisible && (stableChecks >= 3 || idleChecks >= 8)
-      : current && stableChecks >= 8 && Date.now() - lastChangeAt >= 1_500;
+      ? !stopVisible && hasOutput && (
+        (finalActions && idleChecks >= 6 && quietFor >= 1_200)
+        || (idleChecks >= 30 && quietFor >= 8_000)
+      )
+      : Boolean(current) && (
+        (finalActions && stableChecks >= 6 && quietFor >= 1_000)
+        || (stableChecks >= 30 && quietFor >= 5_000)
+      );
     if (finished) {
-      void ensureSkmakeConversationTitle().catch(() => undefined);
+      await ensureSkmakeConversationTitle().catch(() => undefined);
       activeGeneration = null;
       generationEvent(requestId, "done");
       reportStatus();

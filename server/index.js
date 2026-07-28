@@ -349,6 +349,9 @@ app.post("/v1/chat/completions", authenticate, async (req, res) => {
           content += event.delta;
           if (stream) res.write(openAiChunk(base, { content: event.delta }));
         }
+        if (event.type === "reasoning" && typeof event.delta === "string") {
+          if (stream) res.write(openAiChunk(base, { reasoning_content: event.delta }));
+        }
         if (event.type === "search") {
           bridgeWebSearch = {
             type: "web_search",
