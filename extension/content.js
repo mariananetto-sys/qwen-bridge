@@ -231,8 +231,29 @@ function userBlocks() {
   return [...document.querySelectorAll(USER_SELECTOR)];
 }
 
-function isThreadPage() {
-  return /^\/c\/[a-z0-9-]+\/?$/i.test(location.pathname);
+function promptFingerprint(value) {
+  const normalized = String(value || "").replace(/\s+/g, " ").trim();
+  return {
+    head: normalized.slice(0, 120),
+    tail: normalized.slice(-120),
+  };
+}
+
+function findSubmittedUser(prompt, baseline = new Set()) {
+  const { head, tail } = promptFingerprint(prompt);
+  const blocks = userBlocks();
+  const matching = blocks.filter((block) => {
+    const text = normalizedText(block);
+    return (!head || text.includes(head)) && (!tail || text.includes(tail));
+  });
+  return matching.at(-1)
+    || blocks.filter((block) => !baseline.has(block)).at(-1)
+    || null;
+}
+
+function appearsAfter(anchor, candidate) {
+  if (!(anchor instanceof Node) || !(candidate instanceof Node)) return false;
+  return Boolean(anchor.compareDocumentPosition(candidate) & Node.DOCUMENT_POSITION_FOLLOWING);
 }
 
 function safeExternalUrl(value) {
@@ -563,6 +584,8 @@ function hasUnstableCodeSnapshot(blocks, markdown) {
 
 async function monitorGeneration(
   requestId,
+  submittedPrompt,
+  submittedUser,
   assistantBaseline,
   timeoutMs,
   webBaseline,
@@ -592,7 +615,12 @@ async function monitorGeneration(
     idleChecks = stopSeen && !stopVisible ? idleChecks + 1 : 0;
 
     const blocks = assistantBlocks();
-    const currentBlocks = blocks.filter((block) => !assistantBaseline.has(block));
+    if (!submittedUser?.isConnected) {
+      submittedUser = findSubmittedUser(submittedPrompt) || userBlocks().at(-1) || null;
+    }
+    const currentBlocks = submittedUser
+      ? blocks.filter((block) => appearsAfter(submittedUser, block))
+      : blocks.filter((block) => !assistantBaseline.has(block));
     const currentBlock = currentBlocks.at(-1) || null;
     const current = currentBlocks
       .map((block) => extractMarkdown(block))
@@ -689,7 +717,6 @@ async function startGeneration(message) {
   let input = await waitFor(findInput, 30_000, 100, "CHATGPT_INPUT_NOT_FOUND");
   const assistantBaseline = new Set(assistantBlocks());
   const userBaseline = new Set(userBlocks());
-  const threadBefore = isThreadPage() ? location.pathname : null;
   const webBaseline = extractWebActivity(document.querySelector("main"));
   const reasoningBaseline = new Set(visibleReasoningEntries(document.body));
   activeGeneration = { requestId: message.requestId };
@@ -711,21 +738,18 @@ async function startGeneration(message) {
     }
   };
 
-  const submitted = () => {
-    const createdThread = isThreadPage() && location.pathname !== threadBefore;
-    const addedUserMessage = userBlocks().some((block) => !userBaseline.has(block));
-    return createdThread || addedUserMessage || visible(document.querySelector(STOP_SELECTOR));
-  };
+  const submitted = () => findSubmittedUser(message.prompt, userBaseline);
 
+  let submittedUser;
   try {
     await submit();
-    let accepted = await waitFor(() => submitted(), 8_000, 120).then(() => true).catch(() => false);
-    if (!accepted) {
+    submittedUser = await waitFor(submitted, 8_000, 120).catch(() => null);
+    if (!submittedUser) {
       input = await waitFor(findInput, 5_000, 100, "CHATGPT_INPUT_NOT_FOUND");
       await submit();
-      accepted = await waitFor(() => submitted(), 8_000, 120).then(() => true).catch(() => false);
+      submittedUser = await waitFor(submitted, 8_000, 120).catch(() => null);
     }
-    if (!accepted) throw new Error("CHATGPT_SUBMISSION_FAILED");
+    if (!submittedUser) throw new Error("CHATGPT_SUBMISSION_FAILED");
   } catch (error) {
     activeGeneration = null;
     throw error;
@@ -733,6 +757,8 @@ async function startGeneration(message) {
 
   void monitorGeneration(
     message.requestId,
+    message.prompt,
+    submittedUser,
     assistantBaseline,
     message.timeoutMs,
     webBaseline,
