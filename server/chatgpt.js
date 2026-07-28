@@ -163,6 +163,7 @@ export class ChatGptBridge {
 
     const executable = process.env.CHATGPT_CHROME_BIN || "google-chrome";
     const extensionId = this.packageExtension(executable);
+    this.removeStaleProfileLocks();
     const args = [
       `--user-data-dir=${PROFILE_DIR}`,
       "--no-first-run",
@@ -193,6 +194,15 @@ export class ChatGptBridge {
       this.lastStatus = { ...this.lastStatus, ready: false };
       console.log(`Google Chrome exited (${signal || code || 0})`);
     });
+  }
+
+  removeStaleProfileLocks() {
+    for (const name of ["SingletonLock", "SingletonCookie", "SingletonSocket"]) {
+      fs.rmSync(path.join(PROFILE_DIR, name), {
+        force: true,
+        recursive: true,
+      });
+    }
   }
 
   packageExtension(executable) {
