@@ -548,6 +548,20 @@ function extractMarkdown(root) {
   return normalize(markdownRoots.map((markdownRoot) => walk(markdownRoot)).join("\n\n"));
 }
 
+function hasUnstableCodeSnapshot(blocks, markdown) {
+  const preCount = blocks.reduce(
+    (total, block) => total + block.querySelectorAll("pre").length,
+    0,
+  );
+  const looseCodeCount = blocks.reduce(
+    (total, block) => total + [...block.querySelectorAll("code")]
+      .filter((code) => !code.closest("pre")).length,
+    0,
+  );
+  const malformedFence = /[^\n]```|```[^\n`]*```/.test(markdown);
+  return malformedFence || (preCount === 0 && looseCodeCount >= 12);
+}
+
 async function monitorGeneration(
   requestId,
   assistantBaseline,
@@ -585,13 +599,17 @@ async function monitorGeneration(
       .map((block) => extractMarkdown(block))
       .filter(Boolean)
       .join("\n\n");
-    if (current && current !== previous) {
+    const unstableCode = hasUnstableCodeSnapshot(currentBlocks, current);
+    if (current && !unstableCode && current !== previous) {
       previous = current;
       stableChecks = 0;
       lastChangeAt = Date.now();
       generationEvent(requestId, "content", { content: current });
-    } else if (current) {
+    } else if (current && !unstableCode) {
       stableChecks += 1;
+    } else if (unstableCode) {
+      stableChecks = 0;
+      lastChangeAt = Date.now();
     }
 
     if (Date.now() - lastReasoningCheckAt >= 400) {
@@ -639,7 +657,7 @@ async function monitorGeneration(
     const quietFor = Date.now() - lastChangeAt;
     const finalActions = hasFinalResponseActions(currentBlock);
     const hasOutput = Boolean(current || previousReasoning);
-    const finished = stopSeen
+    const finished = !unstableCode && (stopSeen
       ? !stopVisible && hasOutput && (
         (finalActions && idleChecks >= 6 && quietFor >= 1_200)
         || (idleChecks >= 100 && quietFor >= 30_000)
@@ -647,7 +665,7 @@ async function monitorGeneration(
       : Boolean(current) && (
         (finalActions && stableChecks >= 12 && quietFor >= 2_000)
         || (stableChecks >= 100 && quietFor >= 30_000)
-      );
+      ));
     if (finished) {
       await ensureSkmakeConversationTitle().catch(() => undefined);
       activeGeneration = null;
