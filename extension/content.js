@@ -431,6 +431,51 @@ async function ensureSkmakeConversationTitle() {
   }));
 }
 
+function extractCodeText(pre) {
+  const code = pre.querySelector("code") || pre;
+  const raw = code.textContent || "";
+  const rendered = code instanceof HTMLElement ? code.innerText : "";
+
+  // The normal ChatGPT renderer keeps literal newlines in the code node.
+  // Prefer that representation because it is unaffected by soft wrapping.
+  if (raw.includes("\n")) return raw;
+  if (rendered.includes("\n")) return rendered;
+
+  // Some ChatGPT deployments render every source line as a positioned child
+  // without placing newline characters in textContent/innerText. Reconstruct
+  // those source lines from their vertical layout before relaying Markdown.
+  let bestRows = [];
+  for (const container of [code, ...code.querySelectorAll("*")]) {
+    const children = [...container.children].filter((child) =>
+      child instanceof HTMLElement && (child.textContent || "").length > 0);
+    if (children.length < 2) continue;
+    const rows = [];
+    for (const child of children) {
+      const rect = child.getBoundingClientRect();
+      const top = Math.round(rect.top);
+      const text = child.textContent || "";
+      const row = rows.find((candidate) => Math.abs(candidate.top - top) <= 1);
+      if (row) row.text += text;
+      else rows.push({ top, text });
+    }
+    rows.sort((left, right) => left.top - right.top);
+    if (rows.length > bestRows.length) bestRows = rows;
+  }
+  if (bestRows.length > 1) return bestRows.map((row) => row.text).join("\n");
+
+  // Last structural fallback for line wrappers whose layout is unavailable
+  // during a transient render. Avoid treating syntax-token spans as lines.
+  const explicitLines = [...code.querySelectorAll(
+    "[data-line], [data-line-number], [role='row'], .line",
+  )].filter((line) =>
+    !line.parentElement?.closest("[data-line], [data-line-number], [role='row'], .line"));
+  if (explicitLines.length > 1) {
+    return explicitLines.map((line) => line.textContent || "").join("\n");
+  }
+
+  return rendered || raw;
+}
+
 function extractMarkdown(root) {
   const normalize = (value) => value
     .replace(/\u00a0/g, " ")
@@ -451,13 +496,7 @@ function extractMarkdown(root) {
 
     if (tag === "pre") {
       const codeNode = node.querySelector("code");
-      const code = (
-        (codeNode instanceof HTMLElement ? codeNode.innerText : "")
-        || node.innerText
-        || codeNode?.textContent
-        || node.textContent
-        || ""
-      ).replace(/\n+$/, "");
+      const code = extractCodeText(node).replace(/\n+$/, "");
       const language = codeNode?.className.match(/language-([\w-]+)/)?.[1]
         || node.getAttribute("data-language")
         || "";
