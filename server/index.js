@@ -248,7 +248,7 @@ function errorStatus(error) {
   if (code === "MESSAGES_REQUIRED" || code === "INVALID_ATTACHMENTS") return 400;
   if (code === "ATTACHMENTS_TOO_LARGE") return 413;
   if (code === "MODEL_UNAVAILABLE") return 422;
-  if (code === "BRIDGE_QUEUE_FULL" || code === "BRIDGE_QUEUE_TIMEOUT") return 429;
+  if (code === "BRIDGE_QUEUE_FULL" || code === "BRIDGE_QUEUE_TIMEOUT") return 503;
   if (
     code === "CHATGPT_LOGIN_REQUIRED"
     || code === "CHATGPT_EXTENSION_DISCONNECTED"
@@ -269,6 +269,8 @@ function publicErrorMessage(code) {
     MESSAGES_REQUIRED: "Envie pelo menos uma mensagem do usuário.",
     INVALID_ATTACHMENTS: "Um ou mais anexos são inválidos.",
     ATTACHMENTS_TOO_LARGE: "Os anexos ultrapassam o limite técnico seguro.",
+    BRIDGE_QUEUE_FULL: "O bridge está processando muitas solicitações. Tente novamente em instantes.",
+    BRIDGE_QUEUE_TIMEOUT: "O bridge permaneceu ocupado por tempo demais. Tente novamente em instantes.",
     MODEL_UNAVAILABLE: "Este nível não está disponível na conta conectada.",
     MODEL_SELECTOR_NOT_FOUND: "O seletor de nível do ChatGPT mudou ou não está disponível.",
     MODEL_SELECTION_FAILED: "O ChatGPT não confirmou a troca de nível.",
@@ -282,8 +284,6 @@ function publicErrorMessage(code) {
     CHATGPT_NAVIGATION_TIMEOUT: "O ChatGPT demorou demais para abrir a conversa.",
     CHATGPT_SUBMISSION_FAILED: "O ChatGPT não confirmou o envio da mensagem.",
     CHATGPT_TIMEOUT: "O ChatGPT demorou além do limite configurado.",
-    BRIDGE_QUEUE_FULL: "A fila do bridge está cheia.",
-    BRIDGE_QUEUE_TIMEOUT: "A solicitação aguardou demais na fila.",
     GENERATION_CANCELLED: "A geração foi cancelada.",
   };
   return messages[code] || "O ChatGPT Bridge não conseguiu concluir a solicitação.";

@@ -292,7 +292,7 @@ function promptFingerprint(value) {
   };
 }
 
-function findSubmittedUser(prompt, baseline = new Set()) {
+function findSubmittedUser(prompt, baseline = new Set(), exactOnly = false) {
   const { head, tail } = promptFingerprint(prompt);
   const blocks = userBlocks();
   const matching = blocks.filter((block) => {
@@ -300,7 +300,7 @@ function findSubmittedUser(prompt, baseline = new Set()) {
     return (!head || text.includes(head)) && (!tail || text.includes(tail));
   });
   return matching.at(-1)
-    || blocks.filter((block) => !baseline.has(block)).at(-1)
+    || (!exactOnly ? blocks.filter((block) => !baseline.has(block)).at(-1) : null)
     || null;
 }
 
@@ -767,9 +767,11 @@ async function startGeneration(message) {
   if (activeGeneration) throw new Error("CHATGPT_GENERATION_BUSY");
   await ensureIdle();
   await switchModel(message.modelId);
-  let input = await waitFor(findInput, 30_000, 100, "CHATGPT_INPUT_NOT_FOUND");
+  const input = await waitFor(findInput, 30_000, 100, "CHATGPT_INPUT_NOT_FOUND");
   const assistantBaseline = new Set(assistantBlocks());
   const userBaseline = new Set(userBlocks());
+  const userCountBefore = userBaseline.size;
+  const threadBefore = location.pathname;
   const webBaseline = extractWebActivity(document.querySelector("main"));
   const reasoningBaseline = new Set(visibleReasoningEntries(document.body));
   activeGeneration = { requestId: message.requestId };
@@ -791,18 +793,20 @@ async function startGeneration(message) {
     }
   };
 
-  const submitted = () => findSubmittedUser(message.prompt, userBaseline);
+  const submitted = () => {
+    const exact = findSubmittedUser(message.prompt, userBaseline, true);
+    if (exact) return exact;
+    const blocks = userBlocks();
+    if (blocks.length > userCountBefore) return blocks.at(-1) || null;
+    if (location.pathname !== threadBefore && blocks.length) return blocks.at(-1) || null;
+    return null;
+  };
 
   let submittedUser;
   try {
     await attachFiles(message.attachments);
     await submit();
-    submittedUser = await waitFor(submitted, 8_000, 120).catch(() => null);
-    if (!submittedUser) {
-      input = await waitFor(findInput, 5_000, 100, "CHATGPT_INPUT_NOT_FOUND");
-      await submit();
-      submittedUser = await waitFor(submitted, 8_000, 120).catch(() => null);
-    }
+    submittedUser = await waitFor(submitted, 20_000, 120).catch(() => null);
     if (!submittedUser) throw new Error("CHATGPT_SUBMISSION_FAILED");
   } catch (error) {
     activeGeneration = null;
