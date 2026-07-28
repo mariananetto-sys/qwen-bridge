@@ -18,7 +18,7 @@ const STOP_SELECTOR = [
 const ASSISTANT_SELECTOR = 'main [data-message-author-role="assistant"]';
 const USER_SELECTOR = 'main [data-message-author-role="user"]';
 const MODEL_LEVELS = {
-  "gpt-5.5-instant": ["Instant 5.5", "Instantâneo 5.5", "Instant"],
+  "gpt-5.5-instant": ["Instant 5.5", "Instantâneo 5.5", "Instantâneo", "Instant"],
   "gpt-5.5-medium": ["Medium", "Médio"],
   "gpt-5.6-sol": ["High", "Alto"],
   "gpt-5.6-sol-thinking": ["High", "Alto"],
@@ -72,12 +72,13 @@ function findModelTrigger() {
   return buttons.reverse().find((button) => exactLabel(button, allLabels)) || null;
 }
 
-function findVisibleOption(labels) {
+function findVisibleOption(labels, excluded = null) {
   const candidates = [
     ...document.querySelectorAll(
       'button, [role="menuitem"], [role="menuitemradio"], [role="option"], [role="radio"], div, span',
     ),
   ].filter((element) => {
+    if (element === excluded) return false;
     if (!visible(element)) return false;
     const text = normalizedText(element);
     if (!text || text.length > 100 || !optionLabel(element, labels)) return false;
@@ -87,9 +88,59 @@ function findVisibleOption(labels) {
   return candidates.at(-1) || null;
 }
 
+function activateElement(element) {
+  element.scrollIntoView({ block: "nearest", inline: "nearest" });
+  const box = element.getBoundingClientRect();
+  const init = {
+    bubbles: true,
+    cancelable: true,
+    composed: true,
+    clientX: box.left + box.width / 2,
+    clientY: box.top + box.height / 2,
+    button: 0,
+    buttons: 1,
+  };
+  element.dispatchEvent(new PointerEvent("pointerdown", init));
+  element.dispatchEvent(new MouseEvent("mousedown", init));
+  element.dispatchEvent(new PointerEvent("pointerup", { ...init, buttons: 0 }));
+  element.dispatchEvent(new MouseEvent("mouseup", { ...init, buttons: 0 }));
+  element.click();
+}
+
+function visibleModelLabels() {
+  const known = [...new Set([
+    ...Object.values(MODEL_LEVELS).flat(),
+    ...Object.values(MODEL_BASES).flat(),
+    "GPT-5.6 Sol",
+    "GPT-5.5",
+    "GPT-5.3",
+    "o3",
+  ])];
+  return known.filter((label) => findVisibleOption([label])).slice(0, 20);
+}
+
 async function openModelMenu() {
   const trigger = await waitFor(findModelTrigger, 10_000, 100, "MODEL_SELECTOR_NOT_FOUND");
-  trigger.click();
+  const menuLabels = ["Instant 5.5", "Instantâneo 5.5", "Medium", "Médio", "GPT-5.6 Sol"];
+  activateElement(trigger);
+  let opened = await waitFor(
+    () => findVisibleOption(menuLabels, trigger),
+    1_500,
+    100,
+  ).then(() => true).catch(() => false);
+  if (!opened) {
+    activateElement(trigger);
+    opened = await waitFor(
+      () => findVisibleOption(menuLabels, trigger),
+      2_500,
+      100,
+    ).then(() => true).catch(() => false);
+  }
+  if (!opened) {
+    const error = new Error("MODEL_UNAVAILABLE");
+    error.diagnostic = `menu_not_opened; trigger=${normalizedText(trigger)}; visible=${visibleModelLabels().join("|")}`;
+    throw error;
+  }
   return trigger;
 }
 
@@ -101,14 +152,14 @@ async function selectModelBase(labels) {
     100,
     "MODEL_UNAVAILABLE",
   );
-  submenuTrigger.click();
+  activateElement(submenuTrigger);
   const target = await waitFor(
     () => findVisibleOption(labels),
     5_000,
     100,
     "MODEL_UNAVAILABLE",
   );
-  target.click();
+  activateElement(target);
 }
 
 function currentStatus() {
@@ -165,14 +216,14 @@ async function switchModel(modelId) {
 
   const trigger = await waitFor(findModelTrigger, 10_000, 100, "MODEL_SELECTOR_NOT_FOUND");
   if (!exactLabel(trigger, targetLabels)) {
-    trigger.click();
+    activateElement(trigger);
     const target = await waitFor(
       () => findVisibleOption(targetLabels),
       5_000,
       100,
       "MODEL_UNAVAILABLE",
     );
-    target.click();
+    activateElement(target);
   }
 
   await waitFor(() => {
@@ -641,6 +692,9 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       .catch((error) => {
         generationEvent(message.requestId, "error", {
           code: error instanceof Error ? error.message : "CHATGPT_EXTENSION_ERROR",
+          diagnostic: error instanceof Error && typeof error.diagnostic === "string"
+            ? error.diagnostic
+            : `model=${message.modelId}; visible=${visibleModelLabels().join("|")}`,
         });
         sendResponse({ accepted: false });
       });

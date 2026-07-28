@@ -357,6 +357,13 @@ export class ChatGptBridge {
     }
 
     if (message.event === "error") {
+      if (typeof message.diagnostic === "string") {
+        console.error(JSON.stringify({
+          event: "chatgpt_bridge.extension_diagnostic",
+          requestId: message.requestId,
+          diagnostic: message.diagnostic.slice(0, 2_000),
+        }));
+      }
       this.failGeneration(
         message.requestId,
         new Error(typeof message.code === "string" ? message.code : "CHATGPT_EXTENSION_ERROR"),
