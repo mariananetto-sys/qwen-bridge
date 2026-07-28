@@ -204,6 +204,9 @@ chrome.runtime.onMessage.addListener((message) => {
     ...(typeof message.content === "string" ? { content: message.content } : {}),
     ...(typeof message.url === "string" ? { url: message.url } : {}),
     ...(typeof message.code === "string" ? { code: message.code } : {}),
+    ...(typeof message.status === "string" ? { status: message.status } : {}),
+    ...(typeof message.searches === "number" ? { searches: message.searches } : {}),
+    ...(Array.isArray(message.sources) ? { sources: message.sources } : {}),
   });
 
   if (["done", "cancelled", "error"].includes(message.event)) {

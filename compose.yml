@@ -4,28 +4,11 @@ services:
     container_name: chatgpt-bridge
     restart: unless-stopped
     env_file: .env
-    environment:
-      SEARXNG_URL: http://searxng:8080
     ports:
       - "3001:3001"
     volumes:
       - chatgpt-state:/data
-    depends_on:
-      - searxng
     shm_size: "1gb"
-
-  searxng:
-    image: searxng/searxng:latest
-    container_name: skmake-search
-    restart: unless-stopped
-    environment:
-      SEARXNG_SECRET: ${SEARXNG_SECRET:?Defina SEARXNG_SECRET no arquivo .env}
-    expose:
-      - "8080"
-    volumes:
-      - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
-      - searxng-cache:/var/cache/searxng
 
 volumes:
   chatgpt-state:
-  searxng-cache:

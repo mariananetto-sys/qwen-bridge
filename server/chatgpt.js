@@ -293,6 +293,23 @@ export class ChatGptBridge {
       return;
     }
 
+    if (message.event === "search") {
+      const sources = Array.isArray(message.sources)
+        ? message.sources
+          .filter((source) => source && typeof source.title === "string" && typeof source.url === "string")
+          .slice(0, 20)
+        : [];
+      generation.controller.enqueue(
+        generation.encoder.encode(`${JSON.stringify({
+          type: "search",
+          status: message.status === "COMPLETED" ? "COMPLETED" : "RUNNING",
+          searches: Number.isFinite(message.searches) ? Math.max(1, message.searches) : 1,
+          sources,
+        })}\n`),
+      );
+      return;
+    }
+
     if (message.event === "done") {
       this.finishGeneration(message.requestId, { type: "done" });
       return;

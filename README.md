@@ -14,7 +14,7 @@ O repositório remoto pode continuar se chamando `qwen-bridge`. O produto, os lo
 - As respostas são extraídas da interface e transmitidas incrementalmente por SSE.
 - A fila é serial para impedir que duas gerações disputem a mesma janela.
 - Cancelamento, troca de nível, retomada de conversa e Markdown continuam disponíveis.
-- O SearXNG privado permanece em `/v1/search`.
+- Quando o ChatGPT pesquisa por conta própria, a extensão retransmite a atividade e as fontes pelo mesmo SSE.
 
 O bridge não extrai cookies, não usa endpoints privados do ChatGPT e não tenta esconder automação.
 
@@ -26,7 +26,7 @@ O bridge não extrai cookies, não usa endpoints privados do ChatGPT e não tent
 | `gpt-5.6-sol` | Médio |
 | `gpt-5.6-sol-thinking` | Alto |
 
-Os aliases `flash`, `medium`, `high`, `pro` e `specialized` também são aceitos. `pro` e `specialized` usam Alto enquanto a conta conectada não oferecer níveis superiores.
+Os aliases seguem o SKMake: `flash` e `medium` usam Instantâneo; `high` usa Médio; `pro` e `specialized` usam Alto.
 
 ## Instalação na VM
 
@@ -81,8 +81,6 @@ MAX_QUEUE_SIZE=20
 QUEUE_TIMEOUT_MS=120000
 MAX_BODY_SIZE=2mb
 ALLOWED_ORIGIN=https://skmake.vercel.app
-SEARXNG_URL=http://searxng:8080
-SEARXNG_SECRET=outra-chave-longa-e-aleatoria
 ```
 
 Variáveis opcionais:
@@ -102,18 +100,15 @@ Enquanto o SKMake mantiver os nomes antigos:
 ```env
 QWEN_BRIDGE_URL=https://ENDERECO-PROTEGIDO-DO-BRIDGE
 QWEN_BRIDGE_API_KEY=a-mesma-chave-do-CHATGPT_BRIDGE_API_KEY
-QWEN_BRIDGE_MODEL=gpt-5.5
-QWEN_BRIDGE_MODEL_HIGH=gpt-5.6-sol-thinking
-QWEN_BRIDGE_MODEL_PRO=gpt-5.6-sol-thinking
-QWEN_BRIDGE_MODEL_SPECIALIZED=gpt-5.6-sol-thinking
 ```
+
+O SKMake fixa o mapeamento dos níveis no código, portanto variáveis antigas `QWEN_BRIDGE_MODEL_*` podem ser removidas da Vercel.
 
 ## API
 
 - `POST /v1/chat/completions`
 - `GET /v1/models`
 - `POST /v1/conversations/:id/cancel`
-- `GET /v1/search?q=consulta&limit=7`
 - `GET /health`
 - `GET /setup`
 

@@ -16,7 +16,6 @@ const STATE_DIR = process.env.CHATGPT_STATE_DIR
 const THREADS_FILE = path.join(STATE_DIR, "conversations.json");
 const PORT = Number(process.env.PORT || 3001);
 const API_KEY = process.env.CHATGPT_BRIDGE_API_KEY || "";
-const SEARXNG_URL = (process.env.SEARXNG_URL || "http://searxng:8080").replace(/\/+$/, "");
 const MAX_QUEUE_SIZE = Math.max(1, Number(process.env.MAX_QUEUE_SIZE || 20));
 const QUEUE_TIMEOUT_MS = Math.max(5_000, Number(process.env.QUEUE_TIMEOUT_MS || 120_000));
 const SYSTEM_PROMPT = process.env.CHATGPT_SYSTEM_PROMPT || `Você é a IA de Chat do SKMake, um workspace para criação e manutenção de projetos Skript para servidores Minecraft.
@@ -105,15 +104,15 @@ const MODEL_ALIASES = {
   "instantaneo": "gpt-5.5",
   "instantâneo": "gpt-5.5",
   "flash": "gpt-5.5",
+  "medium": "gpt-5.5",
+  "medio": "gpt-5.5",
+  "médio": "gpt-5.5",
   "gpt-5.6-sol": "gpt-5.6-sol",
   "sol": "gpt-5.6-sol",
-  "medium": "gpt-5.6-sol",
-  "medio": "gpt-5.6-sol",
-  "médio": "gpt-5.6-sol",
+  "high": "gpt-5.6-sol",
+  "alto": "gpt-5.6-sol",
   "gpt-5.6-sol-thinking": "gpt-5.6-sol-thinking",
   "sol-thinking": "gpt-5.6-sol-thinking",
-  "high": "gpt-5.6-sol-thinking",
-  "alto": "gpt-5.6-sol-thinking",
   "pro": "gpt-5.6-sol-thinking",
   "specialized": "gpt-5.6-sol-thinking",
   "especializado": "gpt-5.6-sol-thinking",
@@ -258,9 +257,10 @@ function publicErrorMessage(code) {
   return messages[code] || "O ChatGPT Bridge não conseguiu concluir a solicitação.";
 }
 
-function openAiChunk(base, delta, finishReason = null) {
+function openAiChunk(base, delta, finishReason = null, extra = {}) {
   return `data: ${JSON.stringify({
     ...base,
+    ...extra,
     object: "chat.completion.chunk",
     choices: [{ index: 0, delta, finish_reason: finishReason }],
   })}\n\n`;
@@ -320,6 +320,7 @@ app.post("/v1/chat/completions", authenticate, async (req, res) => {
     const reader = completion.stream.getReader();
     const decoder = new TextDecoder();
     let content = "";
+    let bridgeWebSearch = null;
 
     if (stream) {
       res.writeHead(200, {
@@ -343,6 +344,15 @@ app.post("/v1/chat/completions", authenticate, async (req, res) => {
         if (event.type === "content" && typeof event.delta === "string") {
           content += event.delta;
           if (stream) res.write(openAiChunk(base, { content: event.delta }));
+        }
+        if (event.type === "search") {
+          bridgeWebSearch = {
+            type: "web_search",
+            status: event.status === "COMPLETED" ? "COMPLETED" : "RUNNING",
+            searches: Number.isFinite(event.searches) ? Math.max(1, event.searches) : 1,
+            sources: Array.isArray(event.sources) ? event.sources : [],
+          };
+          if (stream) res.write(openAiChunk(base, {}, null, { bridge_event: bridgeWebSearch }));
         }
       }
       if (done) break;
@@ -381,6 +391,7 @@ app.post("/v1/chat/completions", authenticate, async (req, res) => {
         completion_tokens: -1,
         total_tokens: -1,
       },
+      ...(bridgeWebSearch ? { bridge_events: [bridgeWebSearch] } : {}),
     });
   } catch (error) {
     const code = error instanceof Error ? error.message : "BRIDGE_ERROR";
@@ -430,76 +441,7 @@ app.get("/v1/models", authenticate, (_req, res) => {
   });
 });
 
-app.get("/v1/search", authenticate, async (req, res) => {
-  const query = typeof req.query.q === "string"
-    ? req.query.q.replace(/\s+/g, " ").trim().slice(0, 500)
-    : "";
-  const limit = Math.min(10, Math.max(1, Number.parseInt(String(req.query.limit || "7"), 10) || 7));
-  if (query.length < 2) {
-    return res.status(400).json({
-      error: { message: "q is required", code: "invalid_request" },
-    });
-  }
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15_000);
-  try {
-    const endpoint = new URL(`${SEARXNG_URL}/search`);
-    endpoint.searchParams.set("q", query);
-    endpoint.searchParams.set("format", "json");
-    endpoint.searchParams.set("language", "all");
-    endpoint.searchParams.set("safesearch", "1");
-    const upstream = await fetch(endpoint, {
-      headers: { Accept: "application/json" },
-      signal: controller.signal,
-    });
-    if (!upstream.ok) throw new Error("SEARCH_UNAVAILABLE");
-    const payload = await upstream.json().catch(() => null);
-    const results = [];
-
-    for (const item of Array.isArray(payload?.results) ? payload.results : []) {
-      if (typeof item?.url !== "string" || typeof item?.title !== "string") continue;
-      let url;
-      try {
-        url = new URL(item.url);
-        if (!["https:", "http:"].includes(url.protocol)) continue;
-      } catch {
-        continue;
-      }
-      results.push({
-        title: item.title.replace(/\0/g, "").trim().slice(0, 180),
-        url: url.toString(),
-        content: typeof item.content === "string"
-          ? item.content.replace(/\0/g, "").trim().slice(0, 3_500)
-          : "",
-        score: typeof item.score === "number" && Number.isFinite(item.score)
-          ? item.score
-          : null,
-      });
-      if (results.length >= limit) break;
-    }
-    return res.json({ query, results });
-  } catch {
-    return res.status(503).json({
-      error: { message: "Search is unavailable", code: "search_unavailable" },
-    });
-  } finally {
-    clearTimeout(timeout);
-  }
-});
-
 app.get("/health", async (_req, res) => {
-  let searchReady = false;
-  try {
-    const response = await fetch(`${SEARXNG_URL}/`, {
-      signal: AbortSignal.timeout(2_000),
-    });
-    searchReady = response.ok;
-    await response.body?.cancel();
-  } catch {
-    // Chat remains available while the optional search service restarts.
-  }
-
   const browser = await chatgpt.setupStatus();
   const status = chatgpt.isReady
     ? "ok"
@@ -514,7 +456,6 @@ app.get("/health", async (_req, res) => {
     browserReady: chatgpt.isReady,
     extensionConnected: browser.extensionConnected,
     browserChannel: "chrome-extension",
-    searchReady,
   });
 });
 

@@ -86,7 +86,7 @@ Estados:
 - `login_required`
 - `ok`
 
-O payload também informa fila, geração ativa, conexão da extensão e SearXNG.
+O payload também informa fila, geração ativa e conexão da extensão com o Chrome.
 
 ## Erros relevantes
 

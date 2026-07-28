@@ -153,6 +153,51 @@ function assistantBlocks() {
   return [...document.querySelectorAll(ASSISTANT_SELECTOR)];
 }
 
+function safeExternalUrl(value) {
+  try {
+    const url = new URL(value, location.href);
+    const nested = url.hostname.endsWith("google.com")
+      ? url.searchParams.get("url") || url.searchParams.get("q")
+      : null;
+    const resolved = nested ? new URL(nested) : url;
+    if (!["http:", "https:"].includes(resolved.protocol)) return null;
+    if (/(^|\.)chatgpt\.com$|(^|\.)openai\.com$/i.test(resolved.hostname)) return null;
+    resolved.hash = "";
+    return resolved.toString();
+  } catch {
+    return null;
+  }
+}
+
+function sourceTitle(anchor, url) {
+  const label = [
+    anchor.getAttribute("aria-label"),
+    anchor.getAttribute("title"),
+    normalizedText(anchor),
+  ].find((value) => value && !/^\d+$/.test(value.trim()));
+  if (label) return label.replace(/\s+/g, " ").trim().slice(0, 180);
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "Fonte da web";
+  }
+}
+
+function extractWebActivity(root) {
+  if (!(root instanceof HTMLElement)) return { markers: 0, sources: [] };
+  const markerPattern = /\b(?:searched|searching|search)\s+(?:the\s+)?web\b|pesquis(?:ou|ando|ar|a)\s+(?:na\s+)?web|busc(?:ou|ando|ar)\s+(?:na\s+)?web/i;
+  const markerNodes = [...root.querySelectorAll("button, [role='button'], [data-testid*='search'], [aria-label]")]
+    .filter((element) => markerPattern.test(`${normalizedText(element)} ${element.getAttribute("aria-label") || ""}`));
+  const sources = [];
+  for (const anchor of root.querySelectorAll("a[href]")) {
+    const url = safeExternalUrl(anchor.getAttribute("href") || "");
+    if (!url || sources.some((source) => source.url === url)) continue;
+    sources.push({ title: sourceTitle(anchor, url), url });
+    if (sources.length >= 30) break;
+  }
+  return { markers: markerNodes.length, sources };
+}
+
 function extractMarkdown(root) {
   const normalize = (value) => value
     .replace(/\u00a0/g, " ")
@@ -223,7 +268,7 @@ function extractMarkdown(root) {
   return markdownRoot ? normalize(walk(markdownRoot)) : "";
 }
 
-async function monitorGeneration(requestId, responseCountBefore, timeoutMs) {
+async function monitorGeneration(requestId, responseCountBefore, timeoutMs, webBaseline) {
   const deadline = Date.now() + Math.max(30_000, Number(timeoutMs || 480_000));
   let previous = "";
   let stopSeen = false;
@@ -231,6 +276,7 @@ async function monitorGeneration(requestId, responseCountBefore, timeoutMs) {
   let idleChecks = 0;
   let lastChangeAt = Date.now();
   let threadReported = false;
+  let previousWebSignature = "";
 
   while (Date.now() < deadline && activeGeneration?.requestId === requestId) {
     if (!threadReported && /^https:\/\/chatgpt\.com\/c\/[a-z0-9-]+\/?$/i.test(location.href)) {
@@ -243,8 +289,9 @@ async function monitorGeneration(requestId, responseCountBefore, timeoutMs) {
     idleChecks = stopSeen && !stopVisible ? idleChecks + 1 : 0;
 
     const blocks = assistantBlocks();
+    const currentBlock = blocks.length > responseCountBefore ? blocks.at(-1) : null;
     const current = blocks.length > responseCountBefore
-      ? extractMarkdown(blocks.at(-1))
+      ? extractMarkdown(currentBlock)
       : "";
     if (current && current !== previous) {
       previous = current;
@@ -253,6 +300,25 @@ async function monitorGeneration(requestId, responseCountBefore, timeoutMs) {
       generationEvent(requestId, "content", { content: current });
     } else if (current) {
       stableChecks += 1;
+    }
+
+    const pageActivity = extractWebActivity(document.querySelector("main"));
+    const currentActivity = extractWebActivity(currentBlock);
+    const baselineUrls = new Set(webBaseline.sources.map(({ url }) => url));
+    const sources = [...currentActivity.sources, ...pageActivity.sources]
+      .filter((source, index, items) =>
+        !baselineUrls.has(source.url)
+        && items.findIndex((item) => item.url === source.url) === index)
+      .slice(0, 20);
+    const markerCount = Math.max(0, pageActivity.markers - webBaseline.markers);
+    const searches = Math.max(markerCount, sources.length ? 1 : 0);
+    if (searches || sources.length) {
+      const status = stopVisible ? "RUNNING" : "COMPLETED";
+      const signature = JSON.stringify({ status, searches, sources });
+      if (signature !== previousWebSignature) {
+        previousWebSignature = signature;
+        generationEvent(requestId, "search", { status, searches, sources });
+      }
     }
 
     const finished = stopSeen
@@ -280,6 +346,7 @@ async function startGeneration(message) {
   await switchModel(message.modelId);
 
   const responseCountBefore = assistantBlocks().length;
+  const webBaseline = extractWebActivity(document.querySelector("main"));
   fillPrompt(input, message.prompt);
   const send = await waitFor(() => {
     const button = document.querySelector(SEND_SELECTOR);
@@ -297,7 +364,7 @@ async function startGeneration(message) {
       cancelable: true,
     }));
   }
-  void monitorGeneration(message.requestId, responseCountBefore, message.timeoutMs);
+  void monitorGeneration(message.requestId, responseCountBefore, message.timeoutMs, webBaseline);
 }
 
 function cancelGeneration(requestId) {
