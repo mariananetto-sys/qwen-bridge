@@ -23,6 +23,11 @@ const MODEL_LEVELS = {
   "gpt-5.6-sol": ["High", "Alto"],
   "gpt-5.6-sol-thinking": ["High", "Alto"],
 };
+const MODEL_BASES = {
+  "gpt-5.5-medium": ["GPT-5.5"],
+  "gpt-5.6-sol": ["GPT-5.6 Sol"],
+  "gpt-5.6-sol-thinking": ["GPT-5.6 Sol"],
+};
 
 let activeGeneration = null;
 
@@ -65,6 +70,37 @@ function findModelTrigger() {
   const allLabels = Object.values(MODEL_LEVELS).flat();
   const buttons = [...document.querySelectorAll("button")].filter(visible);
   return buttons.reverse().find((button) => exactLabel(button, allLabels)) || null;
+}
+
+function findVisibleOption(labels) {
+  const candidates = [
+    ...document.querySelectorAll('button, [role="menuitem"], [role="option"]'),
+  ].filter((element) => visible(element) && optionLabel(element, labels));
+  return candidates.at(-1) || null;
+}
+
+async function openModelMenu() {
+  const trigger = await waitFor(findModelTrigger, 10_000, 100, "MODEL_SELECTOR_NOT_FOUND");
+  trigger.click();
+  return trigger;
+}
+
+async function selectModelBase(labels) {
+  await openModelMenu();
+  const submenuTrigger = await waitFor(
+    () => findVisibleOption(["GPT-5.6 Sol"]),
+    5_000,
+    100,
+    "MODEL_UNAVAILABLE",
+  );
+  submenuTrigger.click();
+  const target = await waitFor(
+    () => findVisibleOption(labels),
+    5_000,
+    100,
+    "MODEL_UNAVAILABLE",
+  );
+  target.click();
 }
 
 function currentStatus() {
@@ -116,17 +152,20 @@ async function switchModel(modelId) {
   const targetLabels = MODEL_LEVELS[modelId];
   if (!targetLabels) throw new Error("MODEL_UNAVAILABLE");
 
-  const trigger = await waitFor(findModelTrigger, 10_000, 100, "MODEL_SELECTOR_NOT_FOUND");
-  if (exactLabel(trigger, targetLabels)) return;
+  const baseLabels = MODEL_BASES[modelId];
+  if (baseLabels) await selectModelBase(baseLabels);
 
-  trigger.click();
-  const target = await waitFor(() => {
-    const candidates = [
-      ...document.querySelectorAll('button, [role="menuitem"], [role="option"]'),
-    ].filter((element) => visible(element) && optionLabel(element, targetLabels));
-    return candidates.at(-1) || null;
-  }, 5_000, 100, "MODEL_UNAVAILABLE");
-  target.click();
+  const trigger = await waitFor(findModelTrigger, 10_000, 100, "MODEL_SELECTOR_NOT_FOUND");
+  if (!exactLabel(trigger, targetLabels)) {
+    trigger.click();
+    const target = await waitFor(
+      () => findVisibleOption(targetLabels),
+      5_000,
+      100,
+      "MODEL_UNAVAILABLE",
+    );
+    target.click();
+  }
 
   await waitFor(() => {
     const selected = findModelTrigger();
