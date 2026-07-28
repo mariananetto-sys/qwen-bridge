@@ -13,6 +13,13 @@ test("incrementalDelta ignores substantial rewrites to avoid duplicated output",
   assert.equal(incrementalDelta("Resposta anterior", "Texto completamente diferente"), "");
 });
 
+test("incrementalDelta recovers when ChatGPT inserts a wrapper before streamed text", () => {
+  assert.equal(
+    incrementalDelta("Depend", "Atividade concluída\nDependências: Skript 2.7+"),
+    "ências: Skript 2.7+",
+  );
+});
+
 test("runtime extension versions increase with time and fit Chrome's format", () => {
   const earlier = runtimeExtensionVersion(new Date("2026-07-28T04:00:00.000Z"));
   const later = runtimeExtensionVersion(new Date("2026-07-28T04:00:04.000Z"));

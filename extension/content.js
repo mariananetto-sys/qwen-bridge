@@ -360,10 +360,55 @@ function visibleReasoningEntries(root) {
 }
 
 function extractVisibleReasoning(root, baseline = new Set()) {
+  const expanded = extractExpandedReasoning(root);
+  if (expanded) return expanded;
   return visibleReasoningEntries(root)
     .filter((value) => !baseline.has(value))
+    .map((value) => value
+      .replace(/\bSearched\s+\d+\s+websites?\b/gi, "")
+      .replace(/\bPesquisou\s+\d+\s+sites?\b/gi, "")
+      .trim())
+    .filter((value) =>
+      value
+      && !/^(?:thinking|pensando|worked for\b.*|trabalhou por\b.*|stopped thinking|parou de pensar)$/i.test(value))
     .join("\n")
     .slice(0, 16_000);
+}
+
+function findReasoningToggle(root = document) {
+  const pattern = /^(?:thinking|pensando|worked for\b|trabalhou por\b|stopped thinking\b|parou de pensar\b)/i;
+  return [...root.querySelectorAll("button, [role='button']")]
+    .filter((element) => visible(element) && pattern.test(normalizedText(element)))
+    .at(-1) || null;
+}
+
+function extractExpandedReasoning(root) {
+  if (!(root instanceof HTMLElement)) return "";
+  const toggle = findReasoningToggle(root);
+  const turn = toggle?.closest('[data-message-author-role="assistant"]');
+  if (!(toggle instanceof HTMLElement) || !(turn instanceof HTMLElement)) return "";
+
+  const toggleBottom = toggle.getBoundingClientRect().bottom;
+  const searchPattern = /\bSearched\s+\d+\s+websites?\b|\bPesquisou\s+\d+\s+sites?\b/i;
+  const searchTop = [...turn.querySelectorAll("button, [role='button'], div, span")]
+    .filter((element) => visible(element) && searchPattern.test(normalizedText(element)))
+    .map((element) => element.getBoundingClientRect().top)
+    .filter((top) => top > toggleBottom + 2)
+    .sort((a, b) => a - b)[0];
+  const finalTop = searchTop ?? [...turn.querySelectorAll(".markdown, .prose")]
+    .filter(visible)
+    .map((element) => element.getBoundingClientRect().top)
+    .filter((top) => top > toggleBottom + 2)
+    .sort((a, b) => a - b)[0] ?? Number.POSITIVE_INFINITY;
+  const values = [...turn.querySelectorAll("p")]
+    .filter((element) => {
+      if (!visible(element)) return false;
+      const box = element.getBoundingClientRect();
+      return box.top > toggleBottom + 2 && box.bottom < finalTop - 2;
+    })
+    .map(normalizedText)
+    .filter((value) => value && value.length <= 8_000 && !searchPattern.test(value));
+  return [...new Set(values)].join("\n").slice(0, 16_000);
 }
 
 function hasFinalResponseActions(root) {
@@ -372,8 +417,6 @@ function hasFinalResponseActions(root) {
     '[data-testid*="copy-turn"]',
     '[data-testid*="good-response"]',
     '[data-testid*="bad-response"]',
-    'button[aria-label*="Copy"]',
-    'button[aria-label*="Copiar"]',
   ].join(",");
   return [...root.querySelectorAll(selectors)].some(visible);
 }
@@ -523,6 +566,7 @@ async function monitorGeneration(
   let previousReasoning = "";
   let reasoningTranscript = "";
   let lastReasoningCheckAt = 0;
+  const expandedReasoningToggles = new WeakSet();
 
   while (Date.now() < deadline && activeGeneration?.requestId === requestId) {
     if (!threadReported && /^https:\/\/chatgpt\.com\/c\/[a-z0-9-]+\/?$/i.test(location.href)) {
@@ -552,10 +596,20 @@ async function monitorGeneration(
 
     if (Date.now() - lastReasoningCheckAt >= 400) {
       lastReasoningCheckAt = Date.now();
+      const reasoningToggle = findReasoningToggle(document);
+      if (reasoningToggle && !expandedReasoningToggles.has(reasoningToggle)) {
+        expandedReasoningToggles.add(reasoningToggle);
+        if (reasoningToggle.getAttribute("aria-expanded") !== "true") {
+          activateElement(reasoningToggle);
+        }
+      }
       const visibleReasoning = extractVisibleReasoning(document.body, reasoningBaseline);
       if (visibleReasoning && visibleReasoning !== previousReasoning) {
         previousReasoning = visibleReasoning;
+        const transcriptWasOnlyStatus = /^(?:thinking|pensando|worked for\b.*|trabalhou por\b.*|stopped thinking|parou de pensar)$/i
+          .test(reasoningTranscript.trim());
         if (!reasoningTranscript) reasoningTranscript = visibleReasoning;
+        else if (transcriptWasOnlyStatus) reasoningTranscript = visibleReasoning;
         else if (visibleReasoning.startsWith(reasoningTranscript)) reasoningTranscript = visibleReasoning;
         else if (!reasoningTranscript.includes(visibleReasoning)) reasoningTranscript += `\n${visibleReasoning}`;
         lastChangeAt = Date.now();
@@ -591,8 +645,8 @@ async function monitorGeneration(
         || (idleChecks >= 100 && quietFor >= 30_000)
       )
       : Boolean(current) && (
-        (finalActions && stableChecks >= 6 && quietFor >= 1_000)
-        || (stableChecks >= 30 && quietFor >= 5_000)
+        (finalActions && stableChecks >= 12 && quietFor >= 2_000)
+        || (stableChecks >= 100 && quietFor >= 30_000)
       );
     if (finished) {
       await ensureSkmakeConversationTitle().catch(() => undefined);

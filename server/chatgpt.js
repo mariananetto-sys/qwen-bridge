@@ -88,6 +88,8 @@ export function incrementalDelta(previous, incoming) {
   if (!incoming || incoming === previous) return "";
   if (!previous) return incoming;
   if (incoming.startsWith(previous)) return incoming.slice(previous.length);
+  const previousOffset = incoming.indexOf(previous);
+  if (previousOffset >= 0) return incoming.slice(previousOffset + previous.length);
   if (previous.startsWith(incoming) || previous.endsWith(incoming)) return "";
   return "";
 }
