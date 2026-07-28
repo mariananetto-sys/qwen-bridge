@@ -547,17 +547,26 @@ app.use((error, _req, res, _next) => {
   });
 });
 
-async function start() {
-  await chatgpt.init();
+function start() {
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`ChatGPT Bridge ready on port ${PORT}`);
+    console.log("Starting Google Chrome in the background...");
+
+    chatgpt.init()
+      .then(() => {
+        console.log(
+          chatgpt.isReady
+            ? "ChatGPT browser session is ready"
+            : "Google Chrome started; ChatGPT login is required at /setup",
+        );
+      })
+      .catch((error) => {
+        console.error("Google Chrome initialization failed", error);
+      });
   });
 }
 
-start().catch((error) => {
-  console.error("ChatGPT Bridge failed to start", error);
-  process.exitCode = 1;
-});
+start();
 
 for (const signal of ["SIGINT", "SIGTERM"]) {
   process.on(signal, async () => {
