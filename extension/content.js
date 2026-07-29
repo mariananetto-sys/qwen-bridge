@@ -393,10 +393,6 @@ function extractVisibleReasoning(root, baseline = new Set()) {
   if (expanded) return expanded;
   return visibleReasoningEntries(root)
     .filter((value) => !baseline.has(value))
-    .map((value) => value
-      .replace(/\bSearched\s+\d+\s+websites?\b/gi, "")
-      .replace(/\bPesquisou\s+\d+\s+sites?\b/gi, "")
-      .trim())
     .filter((value) =>
       value
       && !/^(?:thinking|pensando|worked for\b.*|trabalhou por\b.*|stopped thinking|parou de pensar)$/i.test(value))
@@ -420,13 +416,12 @@ function extractExpandedReasoning(root) {
   const toggleBottom = toggle.getBoundingClientRect().bottom;
   const controlledId = toggle.getAttribute("aria-controls");
   const controlled = controlledId ? document.getElementById(controlledId) : null;
-  const searchPattern = /\bSearched\s+\d+\s+websites?\b|\bPesquisou\s+\d+\s+sites?\b/i;
   const finalTop = [...turn.querySelectorAll(".markdown, .prose")]
     .filter(visible)
     .map((element) => element.getBoundingClientRect().top)
     .filter((top) => top > toggleBottom + 2)
     .sort((a, b) => a - b)[0] ?? Number.POSITIVE_INFINITY;
-  const selector = "p, li, [role='status'], button, [role='button'], div, span";
+  const selector = "p, li, [role='status'], button, [role='button'], a, div, span";
   const controlledElements = controlled instanceof HTMLElement
     ? [controlled, ...controlled.querySelectorAll(selector)]
     : [];
@@ -434,12 +429,10 @@ function extractExpandedReasoning(root) {
     .filter((element) => {
       if (!visible(element)) return false;
       const text = normalizedText(element);
-      if (!text || text.length > 8_000 || searchPattern.test(text)) return false;
+      if (!text || text.length > 8_000) return false;
       if (element === toggle || element.contains(toggle)) return false;
       const tag = element.tagName.toLowerCase();
       if (["div", "span"].includes(tag) && [...element.children].some((child) => normalizedText(child))) return false;
-      if ([...element.children].some((child) =>
-        visible(child) && normalizedText(child) === text)) return false;
       if (controlled instanceof HTMLElement && controlled.contains(element)) return true;
       const box = element.getBoundingClientRect();
       return box.bottom < finalTop - 2;
