@@ -17,7 +17,7 @@ test("Chrome extension is MV3 and scoped only to ChatGPT", () => {
   assert.equal(manifest.manifest_version, 3);
   assert.equal(manifest.background.service_worker, "background.js");
   assert.deepEqual(manifest.host_permissions, ["https://chatgpt.com/*"]);
-  assert.deepEqual(manifest.permissions, ["tabs"]);
+  assert.deepEqual(manifest.permissions, ["tabs", "clipboardRead"]);
 });
 
 test("Chrome extension injects the bridge content script only on ChatGPT", () => {

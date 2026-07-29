@@ -4,7 +4,8 @@
   "version": "1.0.1",
   "description": "Conecta uma sessão local do ChatGPT ao SKMake sem WebDriver.",
   "permissions": [
-    "tabs"
+    "tabs",
+    "clipboardRead"
   ],
   "host_permissions": [
     "https://chatgpt.com/*"

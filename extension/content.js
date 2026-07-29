@@ -512,7 +512,11 @@ async function ensureSkmakeConversationTitle() {
   }));
 }
 
+const copiedCodeText = new WeakMap();
+
 function extractCodeText(pre) {
+  const copied = copiedCodeText.get(pre);
+  if (copied) return copied;
   const code = pre.querySelector("code") || pre;
   const raw = code.textContent || "";
   const rendered = code instanceof HTMLElement ? code.innerText : "";
@@ -555,6 +559,57 @@ function extractCodeText(pre) {
   }
 
   return rendered || raw;
+}
+
+function findCodeCopyButton(pre) {
+  const turn = pre.closest('[data-message-author-role="assistant"]');
+  let container = pre.parentElement;
+  while (container && container !== turn) {
+    const candidate = [...container.querySelectorAll("button")].find((button) => {
+      const label = [
+        button.getAttribute("aria-label"),
+        button.getAttribute("title"),
+        button.getAttribute("data-testid"),
+        normalizedText(button),
+      ].filter(Boolean).join(" ");
+      return /copy code|copiar c[oó]digo|copy-code|code-copy/i.test(label)
+        || (/^copy$|^copiar$/i.test(normalizedText(button))
+          && !/copy-turn/i.test(button.getAttribute("data-testid") || ""));
+    });
+    if (candidate) return candidate;
+    container = container.parentElement;
+  }
+  return null;
+}
+
+async function readCodeFromCopyButton(pre) {
+  const button = findCodeCopyButton(pre);
+  if (!(button instanceof HTMLElement)) return "";
+  button.closest("div")?.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+  let copied = "";
+  const onCopy = (event) => {
+    copied = event.clipboardData?.getData("text/plain") || "";
+  };
+  document.addEventListener("copy", onCopy, true);
+  try {
+    activateElement(button);
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    if (!copied) copied = await navigator.clipboard.readText().catch(() => "");
+    const normalized = copied.replace(/\r\n/g, "\n").replace(/\n+$/, "");
+    const expectedSignature = (pre.querySelector("code")?.textContent || pre.textContent || "")
+      .replace(/\s+/g, "");
+    if (!normalized || normalized.replace(/\s+/g, "") !== expectedSignature) return "";
+    return normalized;
+  } finally {
+    document.removeEventListener("copy", onCopy, true);
+  }
+}
+
+async function hydrateCopiedCode(blocks) {
+  for (const pre of blocks.flatMap((block) => [...block.querySelectorAll("pre")])) {
+    const copied = await readCodeFromCopyButton(pre);
+    if (copied) copiedCodeText.set(pre, copied);
+  }
 }
 
 function extractMarkdown(root) {
@@ -755,6 +810,15 @@ async function monitorGeneration(
         || (stableChecks >= 100 && quietFor >= 30_000)
       ));
     if (finished) {
+      await hydrateCopiedCode(currentBlocks);
+      const finalContent = currentBlocks
+        .map((block) => extractMarkdown(block))
+        .filter(Boolean)
+        .join("\n\n");
+      if (finalContent && finalContent !== previous) {
+        generationEvent(requestId, "content", { content: finalContent });
+        await new Promise((resolve) => setTimeout(resolve, 120));
+      }
       await ensureSkmakeConversationTitle().catch(() => undefined);
       activeGeneration = null;
       generationEvent(requestId, "done");
